@@ -1,0 +1,51 @@
+:root {
+    --primary: #033A70;
+    --secondary: #033A70;
+    --tertiary: #FFCB05;
+    --quaternary: #D0EEFC;
+    --background: #EDF8FD;
+    --minimal: #3E7DCA;
+    --sidebar-width: 250px;
+    --card-border-radius: 0.75rem;
+    --transition-speed: 0.3s;
+}
+/* Override Bootstrap button styles */
+.btn-primary {
+    color: var(--primary) !important;
+    display: inline-flex; /* ensures stable sizing */
+    align-items: center;
+    justify-content: center;
+    background: var(--tertiary)!important;
+    border: none !important;
+    padding: 0.875rem 2rem;
+    font-weight: 600;
+    letter-spacing: 0.5px !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+    position: relative !important;
+    overflow: hidden !important;
+    line-height: 1.2; /* stabilizes height */
+    transition: 
+        background 0.2s ease, 
+        color 0.2s ease, 
+        font-weight 0.2s ease,
+        transform 0.2s ease-in-out !important;
+    will-change: transform; /* hint for smoother scaling */
+}
+
+.btn-primary:hover {
+    background: var(--primary) !important;
+    color: var(--tertiary) !important;
+    font-weight: 600 !important;
+    transform: scale(1.05) !important; /* pop effect */
+}
+
+.btn-primary:active {
+    transform: scale(0.95) !important; /* pressed effect */
+}
+
+
+.btn-primary:disabled {
+    background: #6c757d !important;
+    cursor: not-allowed !important;
+}

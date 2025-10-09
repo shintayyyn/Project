@@ -1,0 +1,411 @@
+:root {
+    --primary: #3D52A0;
+    --secondary: #7091E6;
+    --tertiary: #8697C4;
+    --quaternary: #ADBBDA;
+    --background: #EDE8F5;
+    --card-border-radius: 0.75rem;
+    --transition-speed: 0.3s;
+}
+
+body {
+    background-color: var(--background);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Card Styles */
+.card {
+    background: white;
+    border: none;
+    border-radius: var(--card-border-radius);
+    box-shadow: 0 4px 15px rgba(61, 82, 160, 0.1);
+    margin-bottom: 1.5rem;
+    transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(61, 82, 160, 0.15);
+}
+
+.card-header {
+    background: white !important;
+    border-bottom: 1px solid rgba(61, 82, 160, 0.1);
+    border-radius: var(--card-border-radius) var(--card-border-radius) 0 0;
+    padding: 1.25rem;
+}
+
+.card-header h5, 
+.card-header h4, 
+.card-title {
+    color: var(--primary);
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
+.card-header i,
+.card-title i {
+    margin-right: 0.75rem;
+    color: var(--secondary);
+    font-size: 1.1em;
+}
+
+.card-body {
+    padding: 1.25rem;
+}
+
+/* Table Styles */
+.table {
+    margin-bottom: 0;
+}
+
+.table thead th {
+    background-color: rgba(61, 82, 160, 0.05);
+    color: var(--primary);
+    font-weight: 600;
+    border-bottom: none;
+    padding: 0.75rem 1rem;
+}
+
+.table td {
+    padding: 0.75rem 1rem;
+    border-color: rgba(61, 82, 160, 0.08);
+    vertical-align: middle;
+}
+
+.table tbody tr {
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.table tbody tr:hover {
+    background-color: rgba(61, 82, 160, 0.05);
+    transform: scale(1.002);
+}
+
+/* Stats Card Styles */
+.stats-card {
+    height: 100%;
+    min-height: 140px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.stats-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+    color: white;
+}
+
+.stats-info h3 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--primary);
+}
+
+.stats-info p {
+    color: #6c757d;
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+/* Header and Navigation */
+.login-header {
+    background: var(--primary);
+    color: white;
+    border-radius: 15px 15px 0 0;
+    padding: 20px;
+    text-align: center;
+}
+
+.role-selector {
+    background: var(--quaternary);
+    padding: 10px;
+}
+
+.nav-link {
+    color: var(--primary);
+    border-radius: 5px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: var(--primary);
+    transition: width 0.3s ease;
+}
+
+.nav-link:hover::after {
+    width: 100%;
+}
+
+.nav-link.active {
+    background-color: var(--secondary) !important;
+    color: white !important;
+}
+
+.nav-link:hover {
+    background-color: var(--quaternary);
+    color: var(--primary);
+}
+
+.nav-link.active:hover {
+    background-color: var(--secondary) !important;
+    color: white !important;
+}
+
+/* Form Controls */
+.form-control {
+    transition: transform 0.2s ease;
+}
+
+.form-control:focus {
+    border-color: var(--secondary);
+    box-shadow: 0 0 0 0.25rem rgba(112, 145, 230, 0.25);
+    transform: scale(1.02);
+}
+
+/* Form layout improvements */
+.modal-dialog {
+    max-width: 600px;
+}
+
+.modal-body {
+    padding: 20px 30px;
+}
+
+.form-label {
+    font-size: 0.9rem;
+    margin-bottom: 0.3rem;
+}
+
+.form-label::after {
+    content: ' *';
+    color: red;
+    display: none;
+}
+
+[required] + .form-label::after {
+    display: inline;
+}
+
+.form-select {
+    transition: transform 0.2s ease;
+}
+
+.form-select:focus {
+    border-color: var(--secondary);
+    box-shadow: 0 0 0 0.25rem rgba(112, 145, 230, 0.25);
+    transform: scale(1.02);
+}
+
+/* Name input capitalization */
+.name-input {
+    text-transform: capitalize;
+}
+
+/* Buttons */
+.btn-login {
+    background-color: var(--primary);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    width: 100%;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-login:hover {
+    background-color: var(--secondary);
+    color: white;
+}
+
+.btn-login.loading {
+    padding-right: 40px;
+}
+
+.btn-login.loading::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    border-right-color: transparent;
+    animation: rotate 0.8s linear infinite;
+}
+
+/* Prevent buttons from changing color on hover */
+.btn-primary:hover, .btn-primary:focus {
+    background-color: var(--primary) !important;
+    color: white !important;
+}
+
+.btn-secondary:hover, .btn-secondary:focus {
+    background-color: var(--secondary) !important;
+    color: white !important;
+}
+
+.btn-primary:active, .btn-primary:focus {
+    background-color: var(--primary) !important;
+    color: white !important;
+}
+
+.btn-secondary:active, .btn-secondary:focus {
+    background-color: var(--secondary) !important;
+    color: white !important;
+}
+
+/* Prevent buttons from changing color on hover and active states */
+.btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+    background-color: var(--primary) !important;
+    color: white !important;
+    border-color: var(--primary) !important;
+}
+
+.btn-secondary:hover, .btn-secondary:focus, .btn-secondary:active {
+    background-color: var(--secondary) !important;
+    color: white !important;
+    border-color: var(--secondary) !important;
+}
+
+/* Ensure edit buttons and update buttons in modals have consistent hover styles */
+.btn-edit-student:hover, .btn-edit-teacher:hover, .btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+    background-color: var(--primary) !important;
+    color: white !important;
+    border-color: var(--primary) !important;
+}
+
+.btn-update-student:hover, .btn-update-teacher:hover, .btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+    background: linear-gradient(145deg, #1E90FF 0%, #1C86EE 100%) !important;
+    color: white !important;
+    border-color: #1C86EE !important;
+}
+
+/* Ensure edit buttons and update buttons in modals have consistent hover styles */
+.btn-edit-student, .btn-edit-teacher {
+    background: linear-gradient(145deg, #1E90FF 0%, #4169E1 100%) !important;
+    color: linear-gradient(145deg, #1a75cf 0%, #3352af 100%) !important;
+    border: none !important;
+    transition: background 0.3s ease;
+}
+
+.btn-edit-student:hover, .btn-edit-teacher:hover {
+    background: linear-gradient(145deg, #4169E1 0%, #1E90FF 100%) !important;
+}
+
+.btn-update-student:hover, .btn-update-teacher:hover {
+    background: linear-gradient(145deg, #1E90FF 0%, #1C86EE 100%) !important;
+    color: white !important;
+    border-color: #1C86EE !important;
+}
+
+/* Modal Styles */
+.modal-content {
+    border-radius: 15px;
+    overflow: hidden;
+}
+
+.modal .nav-link {
+    color: var(--primary);
+    border-radius: 5px;
+    transition: all 0.3s ease;
+}
+
+.modal .nav-link.active {
+    background-color: var(--secondary) !important;
+    color: white !important;
+}
+
+.modal .nav-link:hover {
+    background-color: var(--quaternary);
+    color: var(--primary);
+}
+
+
+.modal .nav-link.active:hover {
+    background-color: var(--secondary) !important;
+    color: white !important;
+}
+
+.modal .tab-pane {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Sign up link style */
+.signup-link {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.signup-link:hover {
+    color: var (--secondary);
+    text-decoration: underline;
+}
+
+/* Animations */
+@keyframes rotate {
+    0% { transform: translateY(-50%) rotate(0deg); }
+    100% { transform: translateY(-50%) rotate(360deg); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.tab-pane {
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* Define gradient background for primary buttons */
+.btn-primary {
+    background: linear-gradient(145deg, var(--primary) 0%, var(--secondary) 100%);
+    border: none;
+    color: white;
+}
+
+/* Define hover, focus, and active states for primary buttons */
+.btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+    background: linear-gradient(145deg, var(--secondary) 0%, var(--primary) 100%) !important;
+    color: white !important;
+    border: none;
+}
+
+/* Update button styles for edit and update buttons */
+.btn-edit-student, .btn-edit-teacher, .btn-update-student, .btn-update-teacher {
+    background: linear-gradient(145deg, var(--primary) 0%, var(--secondary) 100%) !important;
+    border: none;
+    color: white;
+}
+
+.btn-edit-student:hover, .btn-edit-teacher:hover, .btn-update-student:hover, .btn-update-teacher:hover {
+    background: linear-gradient(145deg, var(--secondary) 0%, var(--primary) 100%) !important;
+    color: white !important;
+    border: none;
+}

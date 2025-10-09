@@ -1,0 +1,383 @@
+<style>
+:root { 
+    --primary: #033A70;
+    --secondary: #033A70; 
+    --tertiary: #FFCB05;
+    --quaternary: #D0EEFC;
+    --background: #EDF8FD;
+    --sidebar-width: 250px;
+    --card-border-radius: 0.75rem;
+    --transition-speed: 0.3s;
+}
+
+body {
+    background: var(--background);
+    font-family: 'Baloo 2', 'Nunito', 'Poppins', sans-serif;
+    color: var(--primary);
+    overflow-x:hidden;
+}
+
+* {
+    scrollbar-width: none !important;  
+}
+
+*::-webkit-scrollbar {
+    display: none !important;  
+}
+/* Initial hidden state */
+main {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+/* Visible state */
+main.loaded {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.container {
+    max-width: calc(100% - 100px);
+}
+
+/* Parent Card Styling */
+.parent-header-card {
+    position: static; /* Required for absolute positioning of the avatar */
+    background: var(--quaternary);
+    border-radius: 15px;
+    padding: 6rem 1rem;
+    color: var(--primary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    overflow: visible; /* Allows image to overflow */
+    margin-bottom: 30px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Left Section - Avatar Circle + Text */
+.header-content {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.avatar-circle {
+    width: 80px;
+    height: 80px;
+    background: #fff;
+    color: #033A70;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+    font-weight: bold;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.header-text h1 {
+    font-weight: 600;
+    margin: 0;
+}
+
+.header-text .role {
+    font-size: 0.9rem;
+    opacity: 0.8;
+    margin: 0;
+}
+
+/* Overflowing Avatar */
+.header-avatar {
+    position: absolute;
+    right: -5px;  /* Overflows outside the card */
+    bottom: 0;
+    top:-80px;
+    width: 500px;
+    height: auto;
+    object-fit: contain;
+    pointer-events: none; /* Prevents accidental clicks */
+    z-index: 2;
+}
+
+
+
+/* ============================
+   SUMMARY CARDS
+   ============================ */
+.card-summary {
+    border-radius: 15px;
+    padding: 20px 10px;
+    color: #fff;
+    text-align: center;
+    font-weight: bold;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+}
+
+.card-summary:hover {
+    transform: translateY(-5px);
+    box-shadow: rgba(0,0,0,0.25) 2px 4px 12px;
+}
+
+.card-summary p {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.card-summary h3 {
+    font-size: 1.8rem;
+    margin-top: 5px;
+}
+
+
+.card-sections {
+    background: linear-gradient(to bottom, #FFD500, #FFC107);
+    color: var(--primary);
+}
+
+
+.card-regular {
+    background: linear-gradient(to bottom, var(--primary), #021F3D);
+}
+
+.card-irregular {
+    background: linear-gradient(to bottom, #6FB2F7, var(--primary));
+}
+
+/* ============================
+   CHART CARDS
+   ============================ */
+.chart-card {
+    background: #fff;
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    min-height: 350px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+}
+
+.chart-card h2 {
+    font-weight: 700;
+    font-size: 1.1rem;
+    text-transform: uppercase;
+    color: #000;
+    margin: 0;
+}
+
+/* ============================
+   BADGES
+   ============================ */
+.badge-custom {
+    background: linear-gradient(90deg, var(--primary), #1981C2);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 12px;
+    padding: 5px 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.badge-secondary {
+    background: linear-gradient(90deg, #FFC107, #FFD500);
+    color: var(--primary);
+}
+
+/* ============================
+   CHART LEGEND
+   ============================ */
+.chart-legend {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 15px;
+    flex-wrap: wrap;
+}
+
+.chart-legend span {
+    display: flex;
+    align-items: center;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.chart-legend .legend-box {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    margin-right: 6px;
+}
+
+/* ============================
+   CANVAS
+   ============================ */
+canvas {
+    flex: 1;
+    max-height: 250px;
+}
+
+/* ============================
+   RESPONSIVE GRID
+   ============================ */
+.row.g-3 {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.col-md-7,
+.col-md-5 {
+    display: flex;
+    flex-direction: column;
+}
+/* ============================
+   RESPONSIVE MEDIA QUERIES
+   ============================ */
+   .container {
+    max-width: calc(100% - 0px); /* 50px left + 50px right */
+    padding-left: 20px;
+    padding-right: 20px;
+    top: 0;
+}
+@media (max-width: 992px) {
+    /* Parent header */
+    .parent-header-card {
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+        padding: 2rem 1rem;
+    }
+    .header-avatar {
+        position: relative;
+        top: 0;
+        right: 0;
+        margin-top: 20px;
+        width: clamp(200px, 60vw, 500px);
+        align-self: center;
+    }
+
+    /* Charts and cards full width */
+    .row.g-3 {
+        flex-direction: column;
+    }
+
+    .col-md-7, .col-md-5, 
+    .col-12, .col-sm-6, .col-md-4 {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin-bottom: 20px;
+    }
+
+    .chart-card, .card-summary-two-tone {
+        width: 100% !important;
+    }
+
+    .card-summary-two-tone .card-bottom {
+        padding: 40px 10px;
+        font-size: 2rem;
+    }
+
+    .chart-card {
+        min-height: 300px;
+    }
+}
+
+@media (max-width: 576px) {
+    /* Parent header */
+  .parent-header-card {
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+        width: 100%;
+        height: 340px;
+    }
+
+    .avatar-circle {
+        width: 50px;
+        height: 50px;
+        font-size: 1.4rem;
+    }
+
+    .header-text h1 {
+        font-size: 1.3rem;
+    }
+
+    .header-text .role {
+        font-size: 0.8rem;
+    }
+
+     .header-avatar {
+        flex-direction: column;
+        align-items: flex-start;
+        top: -42px;
+        right: -32px;
+        bottom: -100px;
+        width: 350px;
+    }
+
+    /* Cards full width */
+    .col-12, .col-sm-6, .col-md-4, .col-md-7, .col-md-5 {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin-bottom: 20px;
+    }
+
+    .card-summary-two-tone .card-bottom {
+        padding: 30px 10px;
+        font-size: 1.8rem;
+    }
+
+    .chart-card {
+        min-height: 250px;
+    }
+
+    canvas {
+        max-height: 250px;
+    }
+}
+
+/* Two-tone card container */
+.card-summary-two-tone {
+    border-radius: 12px;
+    overflow: hidden;
+    width: 100%;
+    max-width: 500px;
+    min-height: 200px;
+    margin: 0 auto;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Hover effect */
+.card-summary-two-tone:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+}
+
+/* Top section - Yellow */
+.card-summary-two-tone .card-top {
+    background: #FFC107;
+    color: #033A70;
+    padding: 10px;
+    text-align: center;
+    font-size: 0.9rem;
+    font-weight: bold;
+}
+
+/* Bottom section - Blue */
+.card-summary-two-tone .card-bottom {
+    background: #337DCE;
+    color: #fff;
+    padding: 60px;
+    text-align: center;
+}
+
+.card-summary-two-tone .card-bottom h3 {
+    font-size: 3rem;
+    margin: 0;
+}
+
+</style>

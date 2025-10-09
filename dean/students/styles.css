@@ -1,0 +1,19 @@
+.notification {
+    display: inline-block;
+    padding: 10px 20px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #fff;
+    background-color: #333;
+    opacity: 0.9;
+    margin-top: 10px;
+}
+
+.notification-success {
+    background-color: #28a745;
+}
+
+.notification-error {
+    background-color: #dc3545;
+}

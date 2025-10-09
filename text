@@ -1,0 +1,89 @@
+    elseif ($role === 'teacher') {
+    $check_email = "SELECT * FROM teachers WHERE t_email = ?";
+    $stmt = $conn->prepare($check_email);
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows === 0) {
+        echo json_encode(['error' => 'Invalid email or password']);
+        exit();
+    }
+
+    $teacher = $result->fetch_assoc();
+    if ($teacher['t_password'] !== $password) {
+        echo json_encode(['error' => 'Invalid password']);
+        exit();
+    }
+
+    $_SESSION['user_id'] = $teacher['t_id'];
+    $_SESSION['t_id'] = $teacher['t_id'];
+    $_SESSION['user_type'] = 'teacher';
+
+    // Check if this teacher is also a dean
+    $stmt2 = $conn->prepare("SELECT COUNT(*) FROM degrees WHERE dean_id = ?");
+    $stmt2->bind_param("i", $teacher['t_id']);
+    $stmt2->execute();
+    $stmt2->bind_result($is_dean);
+    $stmt2->fetch();
+    $stmt2->close();
+
+    if ($is_dean > 0) {
+    echo json_encode([
+        'success' => true,
+        'choose_role' => true,
+        'dean_redirect' => 'dean/dashboard.php',
+        'teacher_redirect' => 'teacher/dashboard.php'
+    ]);
+    exit();
+} else {
+    echo json_encode(['success' => true, 'redirect' => 'teacher/dashboard.php']);
+    exit();
+}
+}
+
+   elseif ($role === 'parent') {
+    $check_email = "SELECT * FROM parents WHERE p_email = ?";
+    $stmt = $conn->prepare($check_email);
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows === 0) {
+        echo json_encode(['error' => 'Invalid email or password']);
+        exit();
+    }
+
+    $parent = $result->fetch_assoc();
+    if ($parent['p_password_plain'] !== $password) {
+        echo json_encode(['error' => 'Invalid password']);
+        exit();
+    }
+
+    $_SESSION['parent_id'] = $parent['p_id'];
+    $_SESSION['user_type'] = 'parent';
+    echo json_encode(['success' => true, 'redirect' => 'parent/dashboard.php']);
+}
+
+    elseif ($role === 'admin') {
+        $check_username = "SELECT * FROM admins WHERE username = ?";
+        $stmt = $conn->prepare($check_username);
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result->num_rows === 0) {
+            echo json_encode(['error' => 'Invalid username or password']);
+            exit();
+        }
+
+        $admin = $result->fetch_assoc();
+        if ($admin['password'] !== $password) {
+            echo json_encode(['error' => 'Invalid password']);
+            exit();
+        }
+
+        $_SESSION['user_id'] = $admin['id'];
+        $_SESSION['user_type'] = 'admin';
+        echo json_encode(['success' => true, 'redirect' => 'admin/dashboard.php']);
+    }

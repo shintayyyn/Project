@@ -1,0 +1,59 @@
+   <!-- Profile Card -->
+        <!-- <div class="row mb-4">
+            <div class="col-12">
+                <div class="card profile-card">
+                    <div class="card-body p-0">
+                        <div class="profile-header">
+                            <div class="profile-cover"></div>
+                            <div class="profile-avatar-wrapper">
+                                <div class="profile-image">
+                                    <?php 
+                                    $fname = $student_info['s_fname'];
+                                    $lname = $student_info['s_lname'];
+                                    $initials = strtoupper(substr($fname, 0, 1) . substr($lname, 0, 1));
+                                    echo htmlspecialchars($initials);
+                                    ?>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="profile-content">
+                            <div class="text-center mb-3">
+                                <h4 class="mb-1"><?php echo htmlspecialchars($student_info['s_fname'] . ' ' . $student_info['s_lname']); ?></h4>
+                                <p class="text-muted mb-0">Student</p>
+                            </div>
+                            <div class="profile-stats">
+                                <div class="row text-center">
+                                    <div class="col">
+                                        <div class="stat-item">
+                                            <i class="bi bi-person-badge-fill"></i>
+                                            <div class="stat-text">
+                                                <span class="stat-label">ID Number</span>
+                                                <span class="stat-value"><?php echo htmlspecialchars($student_info['s_id']); ?></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <div class="stat-item">
+                                            <i class="bi bi-people"></i>
+                                            <div class="stat-text">
+                                                <span class="stat-label">Section</span>
+                                                <span class="stat-value"><?php echo htmlspecialchars($student_info['section_code'] ?? 'Not Assigned'); ?></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <div class="stat-item">
+                                            <i class="bi bi-book"></i>
+                                            <div class="stat-text">
+                                                <span class="stat-label">Course</span>
+                                                <span class="stat-value">BSIT</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div> -->

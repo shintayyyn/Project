@@ -1,0 +1,149 @@
+
+:root {
+    --primary: #033A70;
+    --secondary: #033A70;
+    --tertiary: #FFCB05;
+    --quaternary: #D0EEFC;
+    --background: #EDF8FD;
+    --minimal: #3E7DCA;
+    --sidebar-width: 250px;
+    --card-border-radius: 0.75rem;
+    --transition-speed: 0.3s;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+  background:var(--background)!important;
+     background-blend-mode: multiply, multiply;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-size: cover;
+    color: var(--primary);
+}
+
+/* Hide ALL scrollbars (both x and y) */
+html, body {
+  overflow: auto;              /* still allow scrolling */
+  -ms-overflow-style: none;    /* IE and Edge */
+  scrollbar-width: none;       /* Firefox */
+}
+
+html::-webkit-scrollbar, 
+body::-webkit-scrollbar {
+  display: none;               /* Chrome, Safari */
+}
+
+.clock {
+    font-size: 1.1rem;
+}
+
+.main {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 91.5vh;
+}
+.table-scroll {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+}
+
+.table-scroll thead {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+
+.attendance-container > div {
+    box-shadow: 0 3px 8px var(--shadow-dark);
+    border-radius: 10px;
+    padding: 20px;
+    gap: 2;
+    background-color: #fff;
+    border-left: 5px solid var(--primary);
+    min-height: 85vh;   /* 👈 ensures full viewport height */
+}
+
+.attendance-container > div:last-child {
+    width: 100%;
+    margin-left: auto;
+}
+
+.table-container {
+    max-height: 100%;
+    overflow-y: auto;
+    border: 1px solid var(--secondary);
+    border-radius: 10px;
+    padding: 10px;
+}
+
+/* Optional scrollbar styling */
+.table-container::-webkit-scrollbar {
+    width: 6px;
+}
+.table-container::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 3px;
+}
+
+
+/* Corner styling */
+.corner-border::before,
+.corner-border::after {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 3px solid white;
+  z-index: 2;
+}
+
+.corner-border::before {
+  top: 0;
+  left: 0;
+  border-right: none;
+  border-bottom: none;
+}
+
+.corner-border::after {
+  bottom: 0;
+  right: 0;
+  border-left: none;
+  border-top: none;
+}
+
+
+.badge-success {
+    background-color: #28a745 !important;
+}
+.badge-warning {
+    background-color: #ffc107 !important;
+    color: #212529 !important;
+}
+.badge-danger {
+    background-color: #dc3545 !important;
+}
+
+.badge {
+    color: #fff;
+    padding: 0.5em 0.6em;
+    font-size: 0.85rem;
+    border-radius: 0.25rem;
+}
+
+.highlight {
+    background-color: #d4edda !important;
+    transition: background-color 1s ease;
+}
+
+@keyframes flash {
+    0%   { background-color: #d4edda; }
+    100% { background-color: transparent; }
+}
+

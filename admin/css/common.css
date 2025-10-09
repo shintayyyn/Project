@@ -1,0 +1,228 @@
+/* Common styles for admin pages */
+:root {
+    --sidebar-width: 250px;
+}
+
+body {
+    background: #EDE8F5;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+/* Container modifications */
+.container-fluid {
+    width: calc(100% - var(--sidebar-width));
+    margin-left: var(--sidebar-width);
+    padding: 1.5rem;
+    background: #EDE8F5;
+    position: relative;
+    overflow-x: auto;
+}
+
+/* Grid system */
+.row {
+    --bs-gutter-x: 0;
+    --bs-gutter-y: 0;
+    display: flex;
+    flex-wrap: wrap;
+    margin: 0;
+}
+
+.row > * {
+    flex-shrink: 0;
+    width: 100%;
+    max-width: 100%;
+    padding: 0;
+}
+
+/* Card styles */
+.card {
+    border: none;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 15px rgba(61, 82, 160, 0.1);
+    background: #fff;
+    height: 100%;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    margin-bottom: 1.5rem;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(61, 82, 160, 0.15);
+}
+
+.card-header {
+    background: #fff;
+    border-bottom: 1px solid rgba(61, 82, 160, 0.1);
+    padding: 1.25rem;
+    border-radius: 0.75rem 0.75rem 0 0;
+}
+
+.card-header h5, .card-header h4 {
+    color: var(--primary);
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
+.card-header i {
+    margin-right: 0.75rem;
+    color: var(--secondary);
+    font-size: 1.1em;
+}
+
+.card-body {
+    padding: 1.25rem;
+}
+
+/* Table styles */
+.table {
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.table thead th {
+    background-color: rgba(61, 82, 160, 0.05);
+    color: var(--primary);
+    font-weight: 600;
+    border-bottom: none;
+    padding: 0.75rem 1rem;
+}
+
+.table td {
+    padding: 0.75rem 1rem;
+    border-color: rgba(61, 82, 160, 0.08);
+    vertical-align: middle;
+}
+
+.table tbody tr {
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.table tbody tr:hover {
+    background-color: rgba(61, 82, 160, 0.05);
+    transform: scale(1.002);
+}
+
+/* Stats cards */
+.stats-card {
+    height: 100%;
+    min-height: 140px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.stats-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+    background: var(--primary);
+    color: white;
+}
+
+.stats-info h3 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--primary);
+}
+
+.stats-info p {
+    color: #6c757d;
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Button styles */
+.btn {
+    border-radius: 4px;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Modal styles */
+.modal-content {
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.modal-header {
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    background-color: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+}
+
+.modal-footer {
+    border-top: 1px solid rgba(0,0,0,0.1);
+    background-color: #f8f9fa;
+    border-radius: 0 0 8px 8px;
+}
+
+/* List scrolling */
+.list-group {
+    max-height: 300px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+/* Degree card specific */
+.degree-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.degree-card .card-body {
+    flex: 1 1 auto;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .container-fluid {
+        padding: 1rem;
+    }
+    
+    .row {
+        --bs-gutter-x: 0;
+    }
+    
+    .g-4 {
+        --bs-gutter-x: 0;
+        --bs-gutter-y: 0;
+    }
+}
