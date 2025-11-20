@@ -19,6 +19,7 @@ $schedule_query = "
     SELECT start_time, end_time, subject_id, term_id
     FROM sections_schedules
     WHERE ss_id = ?
+    AND is_active = 1
     LIMIT 1
 ";
 $stmt = $conn->prepare($schedule_query);

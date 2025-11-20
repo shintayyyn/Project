@@ -26,6 +26,7 @@ $stmt = $conn->prepare("
     WHERE subject_code = ?
       AND section_id = ?
       AND LOWER(day_of_week) = LOWER(?)
+      AND is_active = 1
     LIMIT 1
 ");
 $stmt->bind_param("sis", $subject_code, $section_id, $currentDay);

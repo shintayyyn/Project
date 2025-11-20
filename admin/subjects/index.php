@@ -103,6 +103,8 @@ while ($row = $subjects_result->fetch_assoc()) {
 
     $subjects_by_degree[$degree_code]['subjects'][] = $row;
 }
+
+
 ?>
 
 
@@ -113,7 +115,7 @@ while ($row = $subjects_result->fetch_assoc()) {
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
   <!-- Left side: Title + Breadcrumb -->
   <div>
-    <h2 class="mb-1">Subjects Management</h2>
+    <h2 class="mb-1 fw-bold">Subjects Management</h2>
     <nav aria-label="breadcrumb">
       <ol class="breadcrumb mb-0">
         <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>
@@ -327,6 +329,7 @@ while ($row = $subjects_result->fetch_assoc()) {
                             </option>
                         <?php endforeach; ?>
                     </select>
+                            <small class="text-muted">Kindly select a department/s.</small>
                 </div>
                     <div class="mb-3">
                         <label for="subject_code" class="form-label">Subject Code</label>
@@ -406,24 +409,32 @@ while ($row = $subjects_result->fetch_assoc()) {
         allowClear: true
     });
      $(document).ready(function() {
-    $('.subjectsTable').DataTable({
-        paging: true,
-        searching: true,
-        ordering: true,
-        pageLength: 10,
-        lengthMenu: [5, 10, 25, 50, 100],
-        columnDefs: [
-            { orderable: false, targets: -1 } // Disable sorting on last column (Actions)
-        ],
-        language: {
-            lengthMenu: "Show _MENU_ entries",
-            search: "Search:",
-            info: "Showing _START_ to _END_ of _TOTAL_ entries",
-            zeroRecords: "No matching records found",
-            emptyTable: "No data available in table"
-        }
-    });
+   $('.subjectsTable').DataTable({
+    paging: true,
+    searching: true,
+    ordering: true,
+    pageLength: 10,
+    lengthMenu: [5, 10, 25, 50, 100],
+
+    scrollY: "60vh",
+    scrollCollapse: true,
+    scrollX: false, // ❌ no horizontal scroll
+
+    autoWidth: false, // helps prevent auto-expanding columns
+
+    columnDefs: [
+        { orderable: false, targets: -1 } // Disable sorting on last column (Actions)
+    ],
+
+    language: {
+        lengthMenu: "Show _MENU_ entries",
+        search: "Search:",
+        info: "Showing _START_ to _END_ of _TOTAL_ entries",
+        zeroRecords: "No matching records found",
+        emptyTable: "No data available in table"
+    }
 });
+     });
 
 });
 

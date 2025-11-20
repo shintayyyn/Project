@@ -51,6 +51,7 @@ $query = "
         INNER JOIN students_sections stsec ON ss.section_id = stsec.section_id
         WHERE stsec.s_id = ? 
           AND ss.term_id = ?
+          AND ss.is_active = 1
 
         UNION ALL
 
@@ -60,6 +61,7 @@ $query = "
         INNER JOIN sections_schedules ss 
             ON se.subject_code = ss.subject_code 
            AND ss.term_id = se.term_id
+           AND ss.is_active = 1
         WHERE se.s_id = ?
           AND se.term_id = ?
     ) AS combined_updates

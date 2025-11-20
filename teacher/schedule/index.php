@@ -55,6 +55,7 @@ LEFT JOIN sections sec ON ss.section_id = sec.section_id
 LEFT JOIN degrees d ON sec.degree_id = d.degree_id
 WHERE ss.teacher_id = ?
   AND ss.term_id = ?
+  AND ss.is_active = 1
 ORDER BY FIELD(ss.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), ss.start_time
 ";
 
@@ -109,6 +110,7 @@ $plot_query = "
     JOIN sections sec ON ss.section_id = sec.section_id
     JOIN subjects s ON ss.subject_code = s.subject_code
     WHERE ss.teacher_id = ?
+    AND ss.is_active = 1
     ORDER BY FIELD(ss.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), ss.start_time
 ";
 
@@ -128,6 +130,7 @@ $avail_query = "
     SELECT section_id, subject_code, day_of_week, start_time, end_time,description
     FROM sections_schedules 
     WHERE teacher_id = ?
+    AND is_active = 1
 ";
 $avail_stmt = $conn->prepare($avail_query);
 $avail_stmt->bind_param("i", $teacher_id);

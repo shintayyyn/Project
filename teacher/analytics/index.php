@@ -18,7 +18,7 @@ $stmt = $conn->prepare("
     SELECT ss.subject_code, s.section_name, ss.section_id
     FROM sections_schedules ss
     JOIN sections s ON ss.section_id = s.section_id
-    WHERE ss.teacher_id = ? AND ss.term_id = ?
+    WHERE ss.teacher_id = ? AND ss.term_id = ? AND ss.is_active = 1
 ");
 $stmt->bind_param("ii", $teacher_id, $term_id);
 $stmt->execute();

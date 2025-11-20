@@ -37,7 +37,7 @@ $getSchedule = $conn->prepare("
     SELECT ss.section_id, sec.section_code, ss.subject_id
     FROM sections_schedules ss
     INNER JOIN sections sec ON ss.section_id = sec.section_id
-    WHERE ss.ss_id = ? AND ss.teacher_id = ?
+    WHERE ss.ss_id = ? AND ss.teacher_id = ? AND ss.is_active = 1
     LIMIT 1
 ");
 $getSchedule->bind_param("ii", $ss_id, $teacher_id);

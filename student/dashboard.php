@@ -111,6 +111,7 @@ $latest_update_query = "
     FROM sections_schedules AS ss
     JOIN students_sections AS sts ON ss.section_id = sts.section_id
     WHERE sts.s_id = {$s_id}
+    AND ss.is_active = 1
 
     UNION ALL
 

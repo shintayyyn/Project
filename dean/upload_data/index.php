@@ -16,7 +16,7 @@ $page_title = "Upload Data";
 
 // Fetch upload history
 $upload_history = [];
-$stmt = $conn->query("SELECT * FROM upload_history ORDER BY uploaded_at DESC");
+$stmt = $conn->query("SELECT * FROM upload_history WHERE uploaded_by = 'dean' ORDER BY uploaded_at DESC");
 while ($row = $stmt->fetch_assoc()) {
     $upload_history[] = $row;
 }
@@ -49,7 +49,7 @@ while ($row = $stmt->fetch_assoc()) {
     <!-- Header with breadcrumb and button -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-2">Upload Management</h2>
+            <h2 class="mb-2 fw-bold">Upload Management</h2>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-0">
                     <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>

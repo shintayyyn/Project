@@ -259,7 +259,7 @@ overflow-x:hidden !important;
 
 <div class="container-fluid">
     <div>
-        <h1 class="h2 mb-2">Schedule Management</h1>
+        <h1 class="h2 mb-2 fw-bold">Schedule Management</h1>
          <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-3">
                     <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>
@@ -403,6 +403,7 @@ $schedules_query = "
     LEFT JOIN rooms r ON ss.room_id = r.room_id
     LEFT JOIN teachers t ON ss.teacher_id = t.t_id
     WHERE ss.section_id = " . (int)$section['section_id'] . "
+    AND ss.is_active = 1
     AND ss.subject_id IS NOT NULL
     ORDER BY ss.schedule_group_id, ss.day_of_week, ss.start_time
 ";
@@ -997,6 +998,22 @@ if (addScheduleForm) {
             showAlert('warning', 'Please fill all required fields.');
             return;
         }
+
+        // Duration check
+        const start = new Date('1970-01-01T' + startTime + ':00');
+        const end = new Date('1970-01-01T' + endTime + ':00');
+        const diffHours = (end - start) / (1000 * 60 * 60);
+
+        let requiredDuration = 0;
+        if (checkedDays.length === 1) requiredDuration = 3;
+        else if (checkedDays.length === 2) requiredDuration = 1.5;
+        else if (checkedDays.length === 3) requiredDuration = 1;
+
+        if (requiredDuration > 0 && diffHours !== requiredDuration) {
+            showAlert('warning', `For a ${checkedDays.length}-day schedule, the duration must be exactly ${requiredDuration} ${requiredDuration === 1 ? 'hour' : 'hours'}.`);
+            return;
+        }
+
 
         // Loop through each day and submit a separate request
         const promises = checkedDays.map(day => {

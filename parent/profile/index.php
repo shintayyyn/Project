@@ -486,7 +486,7 @@ h2.mb-4 {
     
     <small class="form-text text-muted">Leave blank to keep current password</small>
   </div>
-</div>
+                        </div>
 
 <!-- Bootstrap Icons CDN -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
@@ -562,7 +562,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const resendOtpBtn = document.getElementById("resendOtpBtn");
     const otpTimerText = document.getElementById("otpTimerText");
 
-    let originalEmail = "<?php echo htmlspecialchars($student['s_email'] ?? ''); ?>";
+    let originalEmail = "<?php echo htmlspecialchars($parent['s_email'] ?? ''); ?>";
     let otpVerified = localStorage.getItem("otpVerified") === "true"; // ✅ load from storage
     let otpTimer;
     let otpTimeLeft;
@@ -774,7 +774,7 @@ localStorage.removeItem("otpExpiresAt");     // clear expiry
             }
 
             const formData = new FormData(form);
-            fetch("/student/profile/update_profile.php", {
+            fetch("/parent/profile/update_profile.php", {
                 method: "POST",
                 body: formData,
                 headers: { "X-Requested-With": "XMLHttpRequest" }
@@ -795,57 +795,7 @@ localStorage.removeItem("otpExpiresAt");     // clear expiry
         });
     }
 
-    // ------------------- REGENERATE QR -------------------
-    if (regenerateBtn && qrPreview) {
-        const qrContainer = document.getElementById("qrContainer");
-        regenerateBtn.addEventListener("click", function () {
-            const spinner = document.createElement("div");
-            spinner.classList.add("spinner");
-            qrContainer.appendChild(spinner);
-
-            qrPreview.style.opacity = 0;
-
-            fetch("/student/profile/regenerate_qr.php", {
-                method: "POST",
-                headers: { "X-Requested-With": "XMLHttpRequest" }
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === "success") {
-                    showAlert("success", "QR code regenerated successfully.");
-                    const newQR = new Image();
-                    newQR.src = data.generated_qrcode + "?t=" + new Date().getTime();
-                    newQR.onload = () => {
-                        if (qrPreview) {
-                            qrPreview.src = newQR.src;
-                            qrPreview.style.transition = "opacity 0.5s ease-in-out";
-                            qrPreview.style.opacity = 1;
-                        } else if (qrPreviewText) {
-                            const img = document.createElement("img");
-                            img.id = "qrPreview";
-                            img.src = newQR.src;
-                            img.alt = "QR Code";
-                            img.style.width = "100%";
-                            img.style.maxWidth = "300px";
-                            qrPreviewText.replaceWith(img);
-                        }
-                        spinner.remove();
-                        showAlert("success", data.message);
-                        setTimeout(() => location.reload(), 1000);
-                    };
-                } else {
-                    spinner.remove();
-                    showAlert("danger", data.message);
-                }
-            })
-            .catch(err => {
-                spinner.remove();
-                console.error(err);
-                showAlert("danger", "Failed to regenerate QR code.");
-            });
-        });
-    }
-});
+  });
 </script>
 
 

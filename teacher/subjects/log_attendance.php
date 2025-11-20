@@ -28,6 +28,7 @@ $subjectStmt = $conn->prepare("
     INNER JOIN subjects s ON ss.subject_id = s.subject_id
     WHERE ss.ss_id = ?
       AND ss.teacher_id = ?
+      AND ss.is_active = 1
     LIMIT 1
 ");
 $subjectStmt->bind_param("ii", $ss_id, $teacher_id);
@@ -81,6 +82,7 @@ $stmt = $conn->prepare("
       AND ss.teacher_id = ?
       AND subj.subject_code = ?
       AND sec.section_id = ?
+      AND ss.is_active = 1
     ORDER BY COALESCE(a.time_in, a.time_out) DESC
 ");
 $stmt->bind_param("iisi", $ss_id, $teacher_id, $subject_code, $section_id);
@@ -353,7 +355,7 @@ table.dataTable{
       $schedQuery = $conn->prepare("
           SELECT day_of_week, start_time, end_time 
           FROM sections_schedules 
-          WHERE subject_code = ? AND section_id = ?
+          WHERE subject_code = ? AND section_id = ? AND is_active = 1
       ");
       $schedQuery->bind_param("ss", $subject_code, $section_id);
       $schedQuery->execute();
@@ -603,6 +605,7 @@ $totalCount = $totalRegular + $totalIrregular;
                     INNER JOIN sections_schedules ss 
                         ON ss.subject_code = a.subject_code 
                         AND ss.section_id = sec.section_id
+                        AND ss.is_active = 1
                     INNER JOIN academic_terms t ON a.term_id = t.term_id
                     INNER JOIN academic_years ay ON t.ay_id = ay.ay_id
                     WHERE ss.teacher_id = ? 

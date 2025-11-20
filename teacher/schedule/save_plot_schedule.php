@@ -66,6 +66,7 @@ $schedule_sql = "
       AND TIME(end_time) = TIME(?) 
       AND teacher_id = ? 
       AND term_id = ? 
+      AND is_active = 1
     LIMIT 1
 ";
 $schedule_stmt = $conn->prepare($schedule_sql);
@@ -82,7 +83,7 @@ if (!$schedule_row) {
 $ss_id = $schedule_row['ss_id'];
 
 // ✅ Update status + description
-$update_stmt = $conn->prepare("UPDATE sections_schedules SET status = ?, description = ? WHERE ss_id = ?");
+$update_stmt = $conn->prepare("UPDATE sections_schedules SET status = ?, description = ? WHERE ss_id = ? AND is_active =1");
 $update_stmt->bind_param("ssi", $status, $remarks, $ss_id);
 $update_stmt->execute();
 

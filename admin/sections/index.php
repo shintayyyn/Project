@@ -140,7 +140,7 @@ while ($section = $all_sections_result->fetch_assoc()) {
     <!-- Add breadcrumb header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-1">Section Management</h2>
+            <h2 class="mb-1 fw-bold">Section Management</h2>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-0">
                     <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>
@@ -426,14 +426,18 @@ if ($active_term) {
                     <h5 class="mb-0"><?php echo htmlspecialchars($section['section_code']); ?></h5>
                     <small class="text-white"><?php echo $term_display; ?></small>
                 </div>
-                <div>
+                <div class="d-flex gap-2">
                     <button class="btn btn-sm btn-secondary edit-section-btn" 
                             data-section-id="<?php echo $section['section_id']; ?>"
                             data-section-code="<?php echo htmlspecialchars($section['section_code']); ?>"
                             data-year-level="<?php echo $section['year_level']; ?>"
                             data-max-students="<?php echo $section['max_students']; ?>">
-                        <i class="bi bi-pencil-square"></i> Edit
-                    </button>    
+                        <i class="bi bi-pencil-square"></i>
+                    </button>  
+                    <button class="btn btn-sm btn-danger delete-section-btn" 
+                            data-section-id="<?php echo $section['section_id']; ?>">
+                        <i class="bi bi-trash"></i>
+                    </button>
                 </div>
             </div>
             <div class="card-body" id="card-body-<?php echo $section['section_id']; ?>">
@@ -1000,6 +1004,8 @@ $(document).ready(function () {
     });
 });
 
+
+
 document.addEventListener('DOMContentLoaded', function () {
   const degreeFilter = document.getElementById('degreeFilter');
   const searchInput = document.getElementById('searchInput');
@@ -1065,7 +1071,6 @@ if (!countBadge) {
     countBadge.className = 'badge bg-primary mb-2 p-2 fs-6';
     sectionsContainer.parentNode.insertBefore(countBadge, sectionsContainer);
 }
-countBadge.textContent = `Showing ${visibleCount} ${visibleCount === 1 ? 'Section' : 'Sections'}`;
   }
 
   // === Event Listeners ===
@@ -1084,6 +1089,47 @@ countBadge.textContent = `Showing ${visibleCount} ${visibleCount === 1 ? 'Sectio
   filterSections();
 });
 
+
+
+function loadAllSections(termId) {
+
+    // 🔥 Clear the search input
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+
+    fetch('/admin/sections/processes/get_sections.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ term_id: termId })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            const container = $('#sections-container');
+            container.empty(); // clear old sections
+
+            data.sections.forEach(section => {
+                container.append(`
+                    <div class="section-card">
+                        <h4>${section.name}</h4>
+                        <button 
+                            class="delete-section-btn"
+                            data-section-id="${section.id}">
+                            Delete
+                        </button>
+                    </div>
+                `);
+            });
+
+        } else {
+            showAlert('danger', 'Failed to reload sections.');
+        }
+    });
+}
 
 
 // ------------------ Fetch updated student count from server ------------------
@@ -1149,9 +1195,8 @@ $(document).ready(function() {
                     $('#addSectionModal').modal('hide');
                     $addForm[0].reset();
                     $addForm.removeClass('was-validated');
-
                     showAlert('success', response.message || 'Section added successfully');
-
+                    
                     // Build new section card dynamically
                     const newCard = `
 <div class="col-12 col-lg-4 section-card" 
@@ -1165,14 +1210,18 @@ $(document).ready(function() {
                     ${response.term_display || '-'}
                 </small>
             </div>
-            <div>
+            <div class="d-flex gap-2">
                 <button class="btn btn-sm btn-secondary edit-section-btn" 
                         data-section-id="${response.section_id}"
                         data-section-code="${response.formatted_section_code}"
                         data-year-level="${response.year_level || 0}"
                         data-max-students="${response.max_students || 0}"
                         data-term-id="${response.term_id}">
-                    <i class="bi bi-pencil-square"></i> Edit
+                    <i class="bi bi-pencil-square"></i>
+                </button>
+                <button class="btn btn-sm btn-danger delete-section-btn" 
+                        data-section-id="${response.section_id}">
+                    <i class="bi bi-trash"></i>
                 </button>
             </div>
         </div>
@@ -1207,8 +1256,10 @@ $(document).ready(function() {
     </div>
 </div>
 `;
-
                     $sectionsContainer.prepend(newCard);
+                     filterSections(); // Re-apply filters to include new section
+                    refreshSectionCount(response.section_id, response.term_id); // Initial count fetch
+                   
 
                 } else {
                     showAlert('danger', response.message || 'Failed to add section');
@@ -1223,153 +1274,6 @@ $(document).ready(function() {
         });
     });
 });
-
-document.addEventListener('DOMContentLoaded', function () {
-   const assignAdvisorModal = document.getElementById('assignAdvisorModal');
-
-if (assignAdvisorModal) {
-    assignAdvisorModal.addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget;
-        const mode = button.getAttribute('data-mode');
-        const sectionId = button.getAttribute('data-section-id');
-        const advisorId = button.getAttribute('data-advisor-id');
-
-        // Initialize Select2
-        const teacherSelect = $('#teacherSelect');
-        teacherSelect.select2({
-            placeholder: 'Select Advisor',
-            allowClear: true,
-            width: '100%',
-            dropdownParent: $('#assignAdvisorModal')
-        });
-
-        // Clear previous options
-        teacherSelect.empty();
-        teacherSelect.append('<option value=""></option>'); // placeholder
-
-        // Fetch available teachers dynamically
-        fetch(`/admin/sections/processes/get_available_teachers.php?mode=${mode}&current_advisor=${advisorId}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && Array.isArray(data.teachers)) {
-                    data.teachers.forEach(teacher => {
-                        const fullName = `${teacher.t_lname}, ${teacher.t_fname}${teacher.t_mname ? ' ' + teacher.t_mname.charAt(0) + '.' : ''}`;
-                        const option = new Option(fullName, teacher.t_id, false, false);
-
-                        // Pre-select if edit mode and matches current advisor
-                        if (mode === 'edit' && parseInt(teacher.t_id) === parseInt(advisorId)) {
-                            option.selected = true;
-                        }
-
-                        teacherSelect.append(option);
-                    });
-
-                    // Refresh Select2 to reflect new options
-                    teacherSelect.trigger('change');
-                }
-            });
-
-        // Update hidden field with section ID
-        const sectionIdInput = assignAdvisorModal.querySelector('input[name="section_id"]');
-        sectionIdInput.value = sectionId;
-    });
-}
-
-    // Handle form submission to assign advisor dynamically
-    const assignForm = document.getElementById('assignAdvisorForm');
-    if (assignForm) {
-        assignForm.addEventListener('submit', function (e) {
-            e.preventDefault();
-
-            const formData = new FormData(assignForm);
-            const sectionId = formData.get('section_id');
-
-            fetch('/admin/sections/processes/assign_advisor.php', {
-                method: 'POST',
-                body: JSON.stringify({
-                    section_id: sectionId,
-                    advisor_id: formData.get('advisor_id')
-                }),
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        // Close the modal
-                        const modalInstance = bootstrap.Modal.getInstance(assignAdvisorModal);
-                        modalInstance.hide();
-
-                        // Find the correct advisor container for this section
-                        const sectionCard = document.querySelector(`[data-section-id="${sectionId}"]`)?.closest('.section-card');
-
-                        if (sectionCard) {
-                            const advisorContainer = sectionCard.querySelector('.advisor-container');
-
-                            if (advisorContainer) {
-                                // Replace advisor name dynamically
-                                advisorContainer.innerHTML = `
-                                    <strong>Advisor:</strong>
-                                    <span class="text-primary">${data.advisor_name}</span>
-                                    <div class="btn-group btn-group-sm ms-2">
-                                        <button class="btn btn-primary px-2 edit-advisor-btn"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#assignAdvisorModal"
-                                                data-section-id="${sectionId}"
-                                                data-advisor-id="${data.t_id}"
-                                                data-mode="edit">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
-                                        <button class="btn btn-danger delete-advisor-btn"
-                                                data-section-id="${sectionId}">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </div>
-                                `;
-                            } else {
-                                // If there was no advisor container before
-                                const placeholder = sectionCard.querySelector('.no-advisor-placeholder');
-                                if (placeholder) placeholder.remove();
-
-                                const newAdvisorHTML = `
-                                    <div class="advisor-container" data-section-id="${sectionId}">
-                                        <strong>Advisor:</strong>
-                                        <span class="text-primary">${data.advisor_name}</span>
-                                        <div class="btn-group btn-group-sm ms-2">
-                                            <button class="btn btn-primary px-2 edit-advisor-btn"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#assignAdvisorModal"
-                                                    data-section-id="${sectionId}"
-                                                    data-advisor-id="${data.t_id}"
-                                                    data-mode="edit">
-                                                <i class="bi bi-pencil"></i>
-                                            </button>
-                                            <button class="btn btn-danger delete-advisor-btn"
-                                                    data-section-id="${sectionId}">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                `;
-
-                                sectionCard.querySelector('.card-body').insertAdjacentHTML('beforeend', newAdvisorHTML);
-                            }
-                        }
-
-                        showAlert('success', data.message || 'Advisor assigned successfully.');
-                    } else {
-                        showAlert('danger', data.message || 'Failed to assign advisor.');
-                    }
-                })
-                .catch(() => {
-                    showAlert('danger', 'Server error occurred while assigning advisor.');
-                });
-        });
-    }
-});
-
-
 
 // =================== Update Section ===================
 $(document).ready(function() {
@@ -1399,6 +1303,47 @@ $(document).on('click', '.edit-section-btn', function(e) {
     // Show modal
     bsEditModal.show();
 });
+
+$(document).on('click', '.delete-section-btn', function(e) {
+    e.preventDefault();
+    const button = $(this);
+    const sectionId = button.data('section-id');
+
+    Swal.fire({
+        title: 'Are you sure?',
+        text: 'This action will delete the section permanently.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Proceed with deletion
+            fetch('/admin/sections/processes/delete_section.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ section_id: sectionId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Remove section card from DOM
+                    button.closest('.section-card').remove();
+                    showAlert('success', data.message || 'Section deleted successfully.');
+                    refreshSectionCount(sectionId, window.activeTermId);
+                } else {
+                    showAlert('danger', data.message || 'Failed to delete section.');
+                }
+            })
+            .catch(() => {
+                showAlert('danger', 'Server error occurred while deleting section.');
+            });
+        }
+    });
+});
+
 
 // Form Submit Handler
 $('#editSectionForm').on('submit', function(e) {
@@ -1634,6 +1579,153 @@ document.getElementById('uploadStudentsForm').addEventListener('submit', functio
       }, 5000);
     });
 });
+
+
+document.addEventListener('DOMContentLoaded', function () {
+   const assignAdvisorModal = document.getElementById('assignAdvisorModal');
+
+if (assignAdvisorModal) {
+    assignAdvisorModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const mode = button.getAttribute('data-mode');
+        const sectionId = button.getAttribute('data-section-id');
+        const advisorId = button.getAttribute('data-advisor-id');
+
+        // Initialize Select2
+        const teacherSelect = $('#teacherSelect');
+        teacherSelect.select2({
+            placeholder: 'Select Advisor',
+            allowClear: true,
+            width: '100%',
+            dropdownParent: $('#assignAdvisorModal')
+        });
+
+        // Clear previous options
+        teacherSelect.empty();
+        teacherSelect.append('<option value=""></option>'); // placeholder
+
+        // Fetch available teachers dynamically
+        fetch(`/admin/sections/processes/get_available_teachers.php?mode=${mode}&current_advisor=${advisorId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && Array.isArray(data.teachers)) {
+                    data.teachers.forEach(teacher => {
+                        const fullName = `${teacher.t_lname}, ${teacher.t_fname}${teacher.t_mname ? ' ' + teacher.t_mname.charAt(0) + '.' : ''}`;
+                        const option = new Option(fullName, teacher.t_id, false, false);
+
+                        // Pre-select if edit mode and matches current advisor
+                        if (mode === 'edit' && parseInt(teacher.t_id) === parseInt(advisorId)) {
+                            option.selected = true;
+                        }
+
+                        teacherSelect.append(option);
+                    });
+
+                    // Refresh Select2 to reflect new options
+                    teacherSelect.trigger('change');
+                }
+            });
+
+        // Update hidden field with section ID
+        const sectionIdInput = assignAdvisorModal.querySelector('input[name="section_id"]');
+        sectionIdInput.value = sectionId;
+    });
+}
+
+    // Handle form submission to assign advisor dynamically
+    const assignForm = document.getElementById('assignAdvisorForm');
+    if (assignForm) {
+        assignForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const formData = new FormData(assignForm);
+            const sectionId = formData.get('section_id');
+
+            fetch('/admin/sections/processes/assign_advisor.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    section_id: sectionId,
+                    advisor_id: formData.get('advisor_id')
+                }),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Close the modal
+                        const modalInstance = bootstrap.Modal.getInstance(assignAdvisorModal);
+                        modalInstance.hide();
+
+                        // Find the correct advisor container for this section
+                        const sectionCard = document.querySelector(`[data-section-id="${sectionId}"]`)?.closest('.section-card');
+
+                        if (sectionCard) {
+                            const advisorContainer = sectionCard.querySelector('.advisor-container');
+
+                            if (advisorContainer) {
+                                // Replace advisor name dynamically
+                                advisorContainer.innerHTML = `
+                                    <strong>Advisor:</strong>
+                                    <span class="text-primary">${data.advisor_name}</span>
+                                    <div class="btn-group btn-group-sm ms-2">
+                                        <button class="btn btn-primary px-2 edit-advisor-btn"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#assignAdvisorModal"
+                                                data-section-id="${sectionId}"
+                                                data-advisor-id="${data.t_id}"
+                                                data-mode="edit">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-danger delete-advisor-btn"
+                                                data-section-id="${sectionId}">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                `;
+                            } else {
+                                // If there was no advisor container before
+                                const placeholder = sectionCard.querySelector('.no-advisor-placeholder');
+                                if (placeholder) placeholder.remove();
+
+                                const newAdvisorHTML = `
+                                    <div class="advisor-container" data-section-id="${sectionId}">
+                                        <strong>Advisor:</strong>
+                                        <span class="text-primary">${data.advisor_name}</span>
+                                        <div class="btn-group btn-group-sm ms-2">
+                                            <button class="btn btn-primary px-2 edit-advisor-btn"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#assignAdvisorModal"
+                                                    data-section-id="${sectionId}"
+                                                    data-advisor-id="${data.t_id}"
+                                                    data-mode="edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-danger delete-advisor-btn"
+                                                    data-section-id="${sectionId}">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                `;
+
+                                sectionCard.querySelector('.card-body').insertAdjacentHTML('beforeend', newAdvisorHTML);
+                            }
+                        }
+
+                        showAlert('success', data.message || 'Advisor assigned successfully.');
+                    } else {
+                        showAlert('danger', data.message || 'Failed to assign advisor.');
+                    }
+                })
+                .catch(() => {
+                    showAlert('danger', 'Server error occurred while assigning advisor.');
+                });
+        });
+    }
+});
+
 
 
 // =================== View Students in Section ===================

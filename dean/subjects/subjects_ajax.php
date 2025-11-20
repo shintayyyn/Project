@@ -6,10 +6,24 @@ ini_set('display_errors', 0);
 require_once __DIR__ . '/../../includes/db.php';
 header('Content-Type: application/json');
 
-function getSubjects($conn) {
+/**
+ * Fetch subjects optionally filtered by department(s)
+ */
+function getSubjects($conn, $degree_ids = []) {
     // Get the active term_id first
     $active_term = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1")->fetch_assoc();
     $active_term_id = $active_term['term_id'] ?? 0;
+
+    $filter = "";
+    $params = [];
+    $types = "";
+
+    if (!empty($degree_ids)) {
+        $placeholders = implode(',', array_fill(0, count($degree_ids), '?'));
+        $filter = " WHERE s.degree_id IN ($placeholders)";
+        $params = $degree_ids;
+        $types = str_repeat("i", count($degree_ids));
+    }
 
     $query = "
         SELECT 
@@ -50,11 +64,20 @@ function getSubjects($conn) {
         LEFT JOIN teachers t ON st.t_id = t.t_id
         LEFT JOIN academic_terms at ON s.term_id = at.term_id
         LEFT JOIN academic_years ay ON at.ay_id = ay.ay_id
+        $filter
         GROUP BY s.subject_id
         ORDER BY s.subject_code
     ";
 
-    $result = $conn->query($query);
+    if (!empty($degree_ids)) {
+        $stmt = $conn->prepare($query);
+        $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $result = $stmt->get_result();
+    } else {
+        $result = $conn->query($query);
+    }
+
     $subjects = [];
     while ($row = $result->fetch_assoc()) {
         $subjects[] = $row;
@@ -62,6 +85,9 @@ function getSubjects($conn) {
     return $subjects;
 }
 
+/**
+ * Helper function to send JSON response
+ */
 function sendResponse($status, $message, $subjects = null) {
     ob_clean();
     $response = [
@@ -96,80 +122,80 @@ try {
                          VALUES (?, ?, ?, ?, ?)";
         $stmt = $conn->prepare($insert_query);
 
+        $degree_ids_added = [];
         foreach ($degree_codes as $code) {
             $degree_stmt = $conn->prepare("SELECT degree_id FROM degrees WHERE degree_code = ?");
             $degree_stmt->bind_param("s", $code);
             $degree_stmt->execute();
             $degree_result = $degree_stmt->get_result();
             $degree = $degree_result->fetch_assoc();
+            $degree_stmt->close();
 
             if (!empty($degree['degree_id'])) {
                 $degree_id = $degree['degree_id'];
 
-                $check_query = "
-                    SELECT COUNT(*) as count 
-                    FROM subjects 
-                    WHERE subject_code = ? AND degree_id = ?
-                ";
+                $check_query = "SELECT COUNT(*) as count FROM subjects WHERE subject_code = ? AND degree_id = ?";
                 $check_stmt = $conn->prepare($check_query);
                 $check_stmt->bind_param("si", $subject_code, $degree_id);
                 $check_stmt->execute();
                 $check_result = $check_stmt->get_result();
                 $row = $check_result->fetch_assoc();
+                $check_stmt->close();
 
-                if ($row['count'] > 0) {
-                    continue; // Skip duplicates
-                }
+                if ($row['count'] > 0) continue;
 
                 $stmt->bind_param("ssiii", $subject_code, $subject_description, $units, $degree_id, $term_id);
                 $stmt->execute();
+
+                $degree_ids_added[] = $degree_id;
             }
         }
 
-        sendResponse('success', 'Subject added successfully.', getSubjects($conn));
+        sendResponse('success', 'Subject added successfully.', getSubjects($conn, $degree_ids_added));
     }
 
     // =======================
     // EDIT SUBJECT
     // =======================
     if (isset($_POST['action']) && $_POST['action'] === 'edit') {
-        $subject_id = (int)$_POST['subject_id'];
-        $subject_code = trim($_POST['subject_code']);
-        $subject_description = trim($_POST['subject_description']);
-        $units = (int)$_POST['units'];
-        $degree_id = (int)$_POST['degree_id'];
+    $subject_id = (int)$_POST['subject_id'];
+    $subject_code = trim($_POST['subject_code']);
+    $subject_description = trim($_POST['subject_description']);
+    $units = (int)$_POST['units'];
 
-        if (empty($subject_code) || empty($subject_description) || $units < 1 || $units > 6) {
-            sendResponse('error', 'Invalid input. Please check all fields.');
-        }
-
-        $check_query = "
-            SELECT COUNT(*) as count 
-            FROM subjects 
-            WHERE subject_code = ? AND degree_id = ? AND subject_id != ?
-        ";
-        $stmt = $conn->prepare($check_query);
-        $stmt->bind_param("sii", $subject_code, $degree_id, $subject_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-
-        if ($row['count'] > 0) {
-            sendResponse('error', 'This subject code already exists for this degree.');
-        }
-
-        $update_query = "UPDATE subjects 
-                         SET subject_code = ?, subject_description = ?, units = ? 
-                         WHERE subject_id = ?";
-        $stmt = $conn->prepare($update_query);
-        $stmt->bind_param("ssii", $subject_code, $subject_description, $units, $subject_id);
-
-        if ($stmt->execute()) {
-            sendResponse('success', 'Subject updated successfully.', getSubjects($conn));
-        } else {
-            sendResponse('error', 'Database error: ' . $stmt->error);
-        }
+    if (empty($subject_code) || empty($subject_description) || $units < 1 || $units > 6) {
+        sendResponse('error', 'Invalid input. Please check all fields.');
     }
+
+    // Get the current degree_id of the subject
+    $deg_result = $conn->query("SELECT degree_id FROM subjects WHERE subject_id = $subject_id");
+    $degree_id = $deg_result->fetch_assoc()['degree_id'] ?? null;
+
+    // Check for duplicate subject_code within the same degree
+    $check_query = "SELECT COUNT(*) as count FROM subjects WHERE subject_code = ? AND subject_id != ? AND degree_id = ?";
+    $stmt = $conn->prepare($check_query);
+    $stmt->bind_param("sii", $subject_code, $subject_id, $degree_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+
+    if ($row['count'] > 0) {
+        sendResponse('error', 'This subject code already exists for this department.');
+    }
+
+    $update_query = "UPDATE subjects SET subject_code = ?, subject_description = ?, units = ? WHERE subject_id = ?";
+    $stmt = $conn->prepare($update_query);
+    $stmt->bind_param("ssii", $subject_code, $subject_description, $units, $subject_id);
+
+    if ($stmt->execute()) {
+        // Only return subjects of this department
+        sendResponse('success', 'Subject updated successfully.', getSubjects($conn, $degree_id ? [$degree_id] : []));
+            } else {
+                sendResponse('error', 'Database error: ' . $stmt->error);
+            }
+        }
+
+
 
     // =======================
     // GET TEACHERS ASSIGNED TO SUBJECT
@@ -204,6 +230,10 @@ try {
     if (isset($_POST['delete'])) {
         $subject_id = (int)$_POST['delete'];
 
+        // Get degree_id of the subject before deletion
+        $deg_result = $conn->query("SELECT degree_id FROM subjects WHERE subject_id = $subject_id");
+        $degree_id = $deg_result->fetch_assoc()['degree_id'] ?? null;
+
         $delete_assignments = "DELETE FROM subjects_teachers WHERE subject_id = ?";
         $stmt = $conn->prepare($delete_assignments);
         $stmt->bind_param("i", $subject_id);
@@ -214,7 +244,7 @@ try {
         $stmt->bind_param("i", $subject_id);
 
         if ($stmt->execute()) {
-            sendResponse('success', 'Subject deleted successfully.', getSubjects($conn));
+            sendResponse('success', 'Subject deleted successfully.', getSubjects($conn, $degree_id ? [$degree_id] : []));
         } else {
             sendResponse('error', 'Database error: ' . $stmt->error);
         }

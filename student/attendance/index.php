@@ -46,6 +46,7 @@ if ($is_regular == 1) {
     WHERE sts.s_id = ?
       AND ss.day_of_week = ?
       AND ss.term_id = ?
+      AND ss.is_active = 1
     ORDER BY ss.start_time";
 } else {
     // Irregular students (subject_enrollments)
@@ -64,6 +65,7 @@ if ($is_regular == 1) {
     WHERE se.s_id = ?
       AND ss.day_of_week = ?
       AND se.term_id = ?
+        AND ss.is_active = 1
     ORDER BY ss.start_time";
 }
 
@@ -89,7 +91,7 @@ if ($is_regular == 1) {
     JOIN teachers t ON ss.teacher_id = t.t_id
     JOIN rooms r ON ss.room_id = r.room_id
     LEFT JOIN generatedqrcode g ON g.id = sts.s_id
-    WHERE sts.s_id = ? AND ss.term_id = ?
+    WHERE sts.s_id = ? AND ss.term_id = ? AND ss.is_active = 1
     ORDER BY s.subject_code,
              FIELD(ss.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'),
              ss.start_time";
@@ -104,6 +106,7 @@ if ($is_regular == 1) {
         ON ss.subject_id = se.subject_id 
        AND ss.section_code = se.section_code 
        AND ss.term_id = se.term_id
+       AND ss.is_active = 1
     JOIN subjects s ON s.subject_id = se.subject_id
     JOIN teachers t ON ss.teacher_id = t.t_id
     JOIN rooms r ON ss.room_id = r.room_id

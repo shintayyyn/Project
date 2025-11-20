@@ -22,7 +22,7 @@ if (!$s_id || !$ss_id || !$absent_date || !$reason || $ss_id === 'undefined') {
 }
 
 // ✅ 3. Validate schedule existence
-$stmt = $conn->prepare("SELECT 1 FROM sections_schedules WHERE ss_id = ?");
+$stmt = $conn->prepare("SELECT 1 FROM sections_schedules WHERE ss_id = ? AND is_active = 1");
 $stmt->bind_param("i", $ss_id);
 $stmt->execute();
 $stmt->store_result();

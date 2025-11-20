@@ -109,9 +109,9 @@ if ($active_term_id) {
 #requestsTable th:nth-child(2),
 #requestsTable td:nth-child(2) { min-width: 100px; } /* Section */
 #requestsTable th:nth-child(3),
-#requestsTable td:nth-child(3) { min-width: 120px; } /* Subject */
+#requestsTable td:nth-child(3) { min-width: 100px; } /* Subject */
 #requestsTable th:nth-child(4),
-#requestsTable td:nth-child(4) { min-width: 150px; } /* Schedule */
+#requestsTable td:nth-child(4) { min-width: 130px; } /* Schedule */
 #requestsTable th:nth-child(5),
 #requestsTable td:nth-child(5) { min-width: 120px; } /* Date */
 /* Keep Status and Attachment compact */
@@ -369,17 +369,22 @@ $(document).ready(function() {
     const unavailableDates = <?= json_encode($existing_dates ?? []) ?>;
 
     // Map schedule text to weekdays
-    function getAllowedDays(scheduleText) {
-        const dayMap = { 'SU':0,'M':1,'T':2,'W':3,'TH':4,'F':5,'S':6 };
-        const activeDays = [];
-        const regex = /(SU|M|T|W|TH|F|S)/gi;
-        let match;
-        while((match = regex.exec(scheduleText)) !== null){
-            const key = match[0].toUpperCase();
-            if(dayMap[key] !== undefined) activeDays.push(dayMap[key]);
-        }
-        return activeDays;
+function getAllowedDays(scheduleText) {
+    const dayMap = { 'SU':0,'M':1,'T':2,'W':3,'TH':4,'F':5,'S':6 };
+    const activeDays = [];
+
+    // Put longer patterns first so "TH" isn't matched as "T"
+    const regex = /(TH|SU|M|T|W|F|S)/gi;
+
+    let match;
+    while ((match = regex.exec(scheduleText)) !== null) {
+        const key = match[0].toUpperCase();
+        if (dayMap[key] !== undefined) activeDays.push(dayMap[key]);
     }
+
+    return activeDays;
+}
+
 
     // Flatpickr for edit modal
  const editPicker = flatpickr("#edit_absent_date", {

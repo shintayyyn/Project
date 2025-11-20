@@ -62,7 +62,7 @@ overflow: hidden !important;
 </head>
 <body>
 <div class="container-fluid">
-    <h3 class="mb-2">Attendance Reports</h3>
+    <h3 class="mb-2 fw-bold">Attendance Reports</h3>
      <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-3">
                     <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>

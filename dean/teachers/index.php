@@ -330,7 +330,7 @@ $result = $conn->query($sql);
                style="width:120px; height:120px; object-fit:cover;">`
       : `<div class="profile-avatar mx-auto mb-3 d-flex align-items-center justify-content-center text-white rounded-circle"
                style="width:120px; height:120px; font-size:2rem; font-weight:bold;">
-           ${teacherName.split(/[ ,]+/).map(n => n.charAt(0)).join('').substring(0,2).toUpperCase()}
+           ${teacherName.split(/[ ,]+/).map(n => n.charAt()).join('').substring(0,3).toUpperCase()}
          </div>`;
 
     // ✅ Update teacher info body

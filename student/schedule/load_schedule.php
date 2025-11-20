@@ -64,6 +64,7 @@ $timestamp_query = "
         FROM sections_schedules ss
         JOIN students_sections sts ON ss.section_id = sts.section_id
         WHERE sts.s_id = ?
+        AND ss.is_active = 1
 
         UNION ALL
         SELECT MAX(se.updated_at) AS updated_at
@@ -102,6 +103,7 @@ if ($is_regular == 2) {
         JOIN teachers t ON t.t_id = st.t_id
         LEFT JOIN rooms r ON r.room_id = ss.room_id
         WHERE ss.term_id = ?
+        AND ss.is_active = 1
         AND (
             ss.section_id = ? 
             OR ss.subject_code IN (SELECT subject_code FROM subject_enrollments WHERE s_id = ? AND term_id = ?)
@@ -129,6 +131,7 @@ if ($is_regular == 2) {
         LEFT JOIN rooms r ON r.room_id = ss.room_id
         WHERE ss.term_id = ?
         AND ss.section_id = ?
+        AND ss.is_active = 1
         GROUP BY ss.subject_code, ss.day_of_week, ss.start_time, ss.end_time
       
     ";

@@ -72,7 +72,7 @@
                         </div>
                     </div>
 
-                    <div class="row">
+                    <div class="row d-none">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Password</label>
                             <input type="text" name="t_password" id="t_password" class="form-control" readonly>
@@ -82,7 +82,7 @@
                             <label class="form-label">Status</label>
                             <select class="form-select" name="t_status" required>
                                 <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
+                                <option value="inactive" selected>Inactive</option>
                             </select>
                         </div>
                     </div>
@@ -101,6 +101,7 @@
                         </div>
                     </div>
                 </form>
+                <small class="muted">Note: Password formatting is small case of first letter of First Name, full Last Name and Birthdate formatted like mmddyyy. (ex.jdoe03302001)</small>
             </div>
 
             <div class="modal-footer">

@@ -306,7 +306,7 @@ overflow-x:hidden !important;
 
 <div class="container-fluid">
     <div>
-        <h1 class="h2 mb-2">Schedule Management</h1>
+        <h1 class="h2 mb-2 fw-bold">Schedule Management</h1>
          <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-3">
                     <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>
@@ -318,7 +318,7 @@ overflow-x:hidden !important;
 <!-- Filters Row -->
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div class="d-flex align-items-center gap-2">
-  <div class="position-relative">
+  <div class="position-relative d-none">
     <!-- Filter icon inside select -->
     <span 
       style="
@@ -448,7 +448,7 @@ $schedules_query = "
     LEFT JOIN subjects s ON ss.subject_id = s.subject_id
     LEFT JOIN rooms r ON ss.room_id = r.room_id
     LEFT JOIN teachers t ON ss.teacher_id = t.t_id
-    WHERE ss.section_id = " . (int)$section['section_id'] . "
+    WHERE ss.section_id = " . (int)$section['section_id'] . " AND ss.is_active = 1
     AND ss.subject_id IS NOT NULL
     ORDER BY ss.schedule_group_id, ss.day_of_week, ss.start_time
 ";
@@ -1044,52 +1044,57 @@ if (addScheduleForm) {
             return;
         }
 
-        // Loop through each day and submit a separate request
-        const promises = checkedDays.map(day => {
-            const formData = new FormData();
-            formData.append('action', 'add_schedule');
-            formData.append('section_id', sectionId);
-            formData.append('subject_code', subjectCode);
-            formData.append('teacher_id', teacherId);
-            formData.append('day_of_week', day);
-            formData.append('start_time', startTime);
-            formData.append('end_time', endTime);
-            formData.append('room_id', roomId);
+        // Duration check
+        const start = new Date('1970-01-01T' + startTime + ':00');
+        const end = new Date('1970-01-01T' + endTime + ':00');
+        const diffHours = (end - start) / (1000 * 60 * 60);
 
-            return fetch('/dean/ajax/schedules_ajax.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json());
+        let requiredDuration = 0;
+        if (checkedDays.length === 1) requiredDuration = 3;
+        else if (checkedDays.length === 2) requiredDuration = 1.5;
+        else if (checkedDays.length === 3) requiredDuration = 1;
+
+        if (requiredDuration > 0 && diffHours !== requiredDuration) {
+            showAlert('warning', `For a ${checkedDays.length}-day schedule, the duration must be exactly ${requiredDuration} ${requiredDuration === 1 ? 'hour' : 'hours'}.`);
+            return;
+        }
+
+        // Send all days in one request
+        const formData = new FormData();
+        formData.append('action', 'add_schedule');
+        formData.append('section_id', sectionId);
+        formData.append('subject_code', subjectCode);
+        formData.append('teacher_id', teacherId);
+        formData.append('start_time', startTime);
+        formData.append('end_time', endTime);
+        formData.append('room_id', roomId);
+
+        checkedDays.forEach(day => formData.append('day_of_week[]', day));
+
+        fetch('/dean/ajax/schedules_ajax.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+       .then(data => {
+    if (data.success) {
+        showAlert('success', data.message || 'Schedule added successfully');
+        const modal = bootstrap.Modal.getInstance(document.getElementById('addScheduleModal'));
+        modal.hide();
+        setTimeout(() => window.location.reload(), 1000);
+    } else {
+        showAlert('error', data.error || data.message);
+    }
+})
+
+        .catch(err => {
+            console.error(err);
+            showAlert('error', dat.error||data.message||'Error adding schedule');
         });
-
-        // Wait for all requests to finish
-        Promise.all(promises)
-            .then(results => {
-                let hasError = false;
-                results.forEach(res => {
-                    if (!res.success) {
-                        hasError = true;
-                        showAlert('danger', res.error || 'Error adding schedule');
-                    }
-                });
-
-                if (!hasError) {
-                    showAlert('success', 'Schedule added successfully!');
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('addScheduleModal'));
-                    modal.hide();
-                    setTimeout(() => window.location.reload(), 1000);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showAlert('danger', 'Error adding schedule');
-            });
 
         this.classList.add('was-validated');
     });
 }
-
   
 const editScheduleModal = document.getElementById('editScheduleModal');
 if (editScheduleModal) {
@@ -1159,11 +1164,11 @@ if (editScheduleModal) {
                 bootstrap.Modal.getInstance(editScheduleModal).hide();
                 setTimeout(() => window.location.reload(), 1000);
             } else {
-                showAlert('danger', data.error || 'Failed to update schedule');
+                showAlert('error', data.error || data.message|| 'Failed to update schedule');
             }
         } catch (error) {
             console.error('Error:', error);
-            showAlert('danger', 'An unexpected error occurred.');
+            showAlert('error',data.error|| data.message|| 'An unexpected error occurred.');
         }
     });
 
@@ -1331,13 +1336,11 @@ document.querySelectorAll('.delete-schedule-btn').forEach(button => {
     });
 });
 
-  // Helper function to show alerts
-   function showAlert(type, message) {
-    // Ensure type is lowercase string
+// Helper function to show alerts
+function showAlert(type, data) {
     type = (type || 'info').toLowerCase();
 
-    let icon;
-    let title;
+    let icon, title, message;
 
     switch(type) {
         case 'success':
@@ -1362,10 +1365,20 @@ document.querySelectorAll('.delete-schedule-btn').forEach(button => {
             title = 'Notice';
     }
 
+    // Accept either string or object
+    if (typeof data === 'string') {
+        message = data;
+    } else if (typeof data === 'object' && data !== null) {
+        // Prefer message, fallback to error
+        message = data.message || data.error || '';
+    } else {
+        message = '';
+    }
+
     Swal.fire({
         icon: icon,
         title: title,
-        text: message || '',
+        text: message,
         toast: true,
         position: 'top-end',
         showConfirmButton: false,

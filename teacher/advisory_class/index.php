@@ -48,12 +48,25 @@ $placeholders = implode(',', array_fill(0, count($sections), '?'));
 $types = str_repeat('i', count($sections));
 $studentStmt = $conn->prepare("
     SELECT 
-        ss.ss_id, ss.s_id, ss.s_fname, ss.s_lname, ss.s_mname, ss.s_suffix, ss.is_Mayor, 
-        sec.section_code, sec.section_name, ss.section_id
+        ss.ss_id, 
+        ss.s_id, 
+        ss.is_Mayor,
+        ss.section_id,
+        sec.section_code,
+        sec.section_name,
+
+        -- Correct student name fields from students table
+        s.s_fname,
+        s.s_lname,
+        s.s_mname,
+        s.s_suffix
+
     FROM students_sections ss
+    JOIN students s ON s.s_id = ss.s_id
     JOIN sections sec ON ss.section_id = sec.section_id
     WHERE ss.section_id IN ($placeholders) AND ss.term_id = ?
 ");
+
 $params = array_merge(array_keys($sections), [$term_id]);
 $studentStmt->bind_param($types . 'i', ...$params);
 $studentStmt->execute();

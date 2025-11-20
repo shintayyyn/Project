@@ -85,6 +85,7 @@ if ($is_regular == 2) {
           AND ss.subject_code = se.subject_code
           AND ss.section_code = se.section_code
           AND ss.term_id = se.term_id
+          AND ss.is_active = 1
     LEFT JOIN subjects s ON s.subject_id = se.subject_id
     LEFT JOIN teachers t ON ss.teacher_id = t.t_id
     LEFT JOIN rooms r ON ss.room_id = r.room_id
@@ -129,6 +130,7 @@ if ($is_regular == 2) {
     LEFT JOIN rooms r ON ss.room_id = r.room_id
     WHERE ss.term_id = ?
       AND ss.section_id = ?
+      AND ss.is_active = 1
     ORDER BY FIELD(ss.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), ss.start_time ASC
 ";
 

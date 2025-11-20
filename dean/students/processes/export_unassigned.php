@@ -23,7 +23,6 @@ if ($_SESSION['user_type'] === 'teacher' && (!isset($_SESSION['is_dean']) || !$_
 // 2. Identify Dean's Degree via degrees table
 // =========================
 $dean_degree_code = null;
-
 if ($_SESSION['user_type'] === 'dean') {
     $stmtDean = $conn->prepare("
         SELECT degree_code 
@@ -67,7 +66,7 @@ $academic_year = $current_term['year_start'] . ' - ' . $current_term['year_end']
 $semester = $current_term['semester'];
 
 // =========================
-// 4. Fetch Students (Filtered by Dean Degree)
+// 4. Fetch Students (Filtered by Dean Degree, Inactive & Not Enrolled / Promoted)
 // =========================
 $stmt = $conn->prepare("
 SELECT 
@@ -80,14 +79,11 @@ LEFT JOIN students_degrees sd
        ON s.s_id = sd.s_id
 LEFT JOIN students_sections ss
        ON s.s_id = ss.s_id AND ss.term_id = ?
-WHERE s.is_regular = 1
-  AND s.s_status = 'active'
-  AND (s.enrollment_status LIKE 'Promoted%' OR s.enrollment_status = 'Not yet Enrolled')
-  AND (ss.section_id IS NULL OR ss.section_id = '')
-
-  -- 🎯 Filter based on dean's degree
+WHERE s.s_status = 'inactive'
+  AND s.is_regular = 1
+  AND (s.enrollment_status = 'Not yet Enrolled' OR s.enrollment_status LIKE 'Promoted%')
   AND sd.degree_code = ?
-
+  AND (ss.section_id IS NULL OR ss.section_id = '')
 ORDER BY sd.degree_code ASC, s.s_lname ASC
 ");
 
@@ -120,7 +116,7 @@ while ($term = $terms_res->fetch_assoc()) {
         FROM sections sec
         JOIN degrees d ON sec.degree_id = d.degree_id
         WHERE sec.term_id = ?
-          AND d.degree_code = ?  -- 🎯 Only dean's degree
+          AND d.degree_code = ?
         ORDER BY sec.section_code ASC
     ");
 
@@ -141,7 +137,6 @@ $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();
 $sheet->setTitle('Unassigned Students');
 
-// Header
 $sheet->setCellValue('A1', "Academic Year: $academic_year | Semester: $semester");
 $sheet->mergeCells('A1:G1');
 $sheet->getStyle('A1')->getFont()->setBold(true);
@@ -149,7 +144,6 @@ $sheet->getStyle('A1')->getFont()->setBold(true);
 $sheet->setCellValue('H1', 'Note: Refer to the Section Legend sheets for Section IDs.');
 $sheet->getStyle('H1')->getFont()->setItalic(true);
 
-// Column Headers
 $sheet->setCellValue('A2', 'No.')
       ->setCellValue('B2', 'ID Code')
       ->setCellValue('C2', 'Full Name')
@@ -162,21 +156,17 @@ $row_num = 3;
 $counter = 1;
 
 foreach ($all_students as $s) {
-
     $fullName = trim($s['s_lname'])
               . (!empty($s['s_suffix']) ? ' ' . $s['s_suffix'] : '')
               . ', ' . $s['s_fname']
               . (!empty($s['s_mname']) ? ' ' . strtoupper($s['s_mname'][0]) . '.' : '');
-
     $regularity = ($s['is_regular'] == 1) ? 'Regular' : 'Irregular';
-
-    $yearLevelText = $s['year_level'];
 
     $sheet->setCellValue("A{$row_num}", $counter)
           ->setCellValue("B{$row_num}", $s['idcode'])
           ->setCellValue("C{$row_num}", $fullName)
           ->setCellValue("D{$row_num}", $s['degree_code'])
-          ->setCellValue("E{$row_num}", $yearLevelText)
+          ->setCellValue("E{$row_num}", $s['year_level'])
           ->setCellValue("F{$row_num}", $regularity)
           ->setCellValue("G{$row_num}", $s['section_id'] ?? '');
 
@@ -199,7 +189,6 @@ foreach ($sections_by_term as $term_key => $degrees) {
 
     $row_num = 1;
     foreach ($degrees as $degree_code => $sections) {
-
         $sheet->setCellValue("A{$row_num}", "Degree: $degree_code");
         $sheet->getStyle("A{$row_num}")->getFont()->setBold(true);
         $row_num++;
@@ -226,7 +215,7 @@ foreach ($sections_by_term as $term_key => $degrees) {
 // =========================
 // 8. Save & Return
 // =========================
-$filename = "Unassigned_Students_{$academic_year}_Sem{$semester}.xlsx";
+$filename = "Dean_Unassigned_Students_{$academic_year}_Sem{$semester}.xlsx";
 $temp_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $filename;
 
 $writer = new Xlsx($spreadsheet);

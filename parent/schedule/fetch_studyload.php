@@ -115,7 +115,7 @@ if (!empty($section_code)) {
             LEFT JOIN teachers t ON sch.teacher_id = t.t_id
             LEFT JOIN rooms r ON sch.room_id = r.room_id
             WHERE sch.section_id = (SELECT section_id FROM students_sections WHERE s_id = ? LIMIT 1)
-              AND sch.term_id = ?
+              AND sch.term_id = ? AND sch.is_active = 1
             ORDER BY subj.subject_code, sch.start_time
         ");
         $stmt->bind_param("ii", $child_id, $term_id);
@@ -131,6 +131,7 @@ if (!empty($section_code)) {
                  ON se.section_code = sch.section_code 
                  AND se.subject_code = sch.subject_code
                  AND sch.term_id = ?
+                 AND sch.is_active = 1
             JOIN subjects subj ON se.subject_code = subj.subject_code
             LEFT JOIN teachers t ON sch.teacher_id = t.t_id
             LEFT JOIN rooms r ON sch.room_id = r.room_id

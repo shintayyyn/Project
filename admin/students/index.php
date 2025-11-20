@@ -150,7 +150,12 @@ $result = $conn->query($sql);
   white-space: normal !important;
   word-wrap: break-word !important;
 }
-
+.dataTables_wrapper {
+    overflow: hidden;
+}
+.dataTables_wrapper {
+    overflow: hidden;
+}
 </style>
 <main>
 <div class="container-fluid p-0">
@@ -776,10 +781,8 @@ if (irregularCheckbox) toggleIrregular(irregularCheckbox);
 <script>
 
    $(document).ready(() => {
-// ---------- DATA TABLE ----------
-
 window.studentsTable = $('#studentsTable').DataTable({
-    responsive: { details: false },
+    responsive: true,  // optional, keeps table layout neat
     columnDefs: [
         { 
             orderable: false, 
@@ -799,9 +802,9 @@ window.studentsTable = $('#studentsTable').DataTable({
     order: [[1, 'desc']],
     pageLength: 25,
     lengthMenu: [5, 10, 25, 50, 100],
-    scrollY: '50vh',
-    scrollCollapse: true,
-    scroller: true
+    scrollY: '50vh',       // vertical scroll only
+    scrollCollapse: true,  // shrink table if less rows
+    scroller: false         // disable virtual scrolling to prevent outer scrollbar
 });
 
 // ---------- FILTERED COUNTER ----------

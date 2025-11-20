@@ -156,6 +156,12 @@ $result = $conn->query($sql);
   white-space: normal !important;
   word-wrap: break-word !important;
 }
+.card-body, table {
+    overflow: hidden;
+}
+.dataTables_wrapper {
+    overflow: hidden;
+}
 
 </style>
 <main>
@@ -176,7 +182,7 @@ $result = $conn->query($sql);
     </div>
 
     <!-- Students Lists -->
-    <div class="row h-100">
+    <div class="row g-3">
     <!-- Students List Table -->
     <div class="col-lg-8">
         <div class="card shadow-sm ">
@@ -193,7 +199,7 @@ $result = $conn->query($sql);
 
             <div class="card-body">
                 <div class="table-responsive p-3">
-                    <table id="studentsTable" class=" nowrap table table-hover">
+                    <table id="studentsTable" class="display nowrap table table-hover">
                         <thead>
                             <tr>
                                 <th>ID</th>
@@ -466,17 +472,34 @@ $row['section_code'] = $section_code; // assign for display
                             </div>
                             <div class="col-md-12 mb-3">
                                 <label class="form-label">Degree Program</label>
-                                <select class="form-select" name="degree_id" required>
-                                    <option value="">Select Degree Program</option>
-                                    <?php
-                                    $degrees_query = "SELECT degree_id, degree_code, degree_name FROM degrees ORDER BY degree_name";
-                                    $degrees_result = $conn->query($degrees_query);
-                                    while ($degree = $degrees_result->fetch_assoc()) {
-                                        echo "<option value='" . htmlspecialchars($degree['degree_id']) . "'>" . 
-                                            htmlspecialchars($degree['degree_code'] . " - " . $degree['degree_name']) . "</option>";
-                                    }
-                                    ?>
-                                </select>
+                                <select name="degree_id" id="degreeSelect" class="form-select" required>
+    <option value="" disabled selected>Select a Degree</option>
+    <?php
+    // Get dean's assigned degree
+    $dean_id = $_SESSION['user_id'] ?? null;
+
+    if ($dean_id) {
+        $stmt = $conn->prepare("
+            SELECT degree_id, degree_name, degree_code
+            FROM degrees
+            WHERE dean_id = ?
+            LIMIT 1
+        ");
+        $stmt->bind_param("i", $dean_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        if ($deg = $result->fetch_assoc()) {
+            echo "<option value='" . htmlspecialchars($deg['degree_id']) . "' selected " .
+                 "data-degree-code='" . htmlspecialchars($deg['degree_code']) . "'>" .
+                 htmlspecialchars($deg['degree_name']) . " (" . htmlspecialchars($deg['degree_code']) . ")" .
+                 "</option>";
+        }
+        $stmt->close();
+    }
+    ?>
+</select>
+
                                 <div class="invalid-feedback">Please select a degree program</div>
                             </div>
                             <div class="col-md-12 mb-3">
@@ -770,7 +793,6 @@ if (irregularCheckbox) toggleIrregular(irregularCheckbox);
 <!-- DataTables -->
 <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
-
 
 <!-- Update script paths to use absolute paths -->
 <script src="/dean/students/js/add_student.js"></script>

@@ -140,7 +140,7 @@ while ($section = $all_sections_result->fetch_assoc()) {
     <!-- Add breadcrumb header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-1">Section Management</h2>
+            <h2 class="mb-1 fw-bold">Section Management</h2>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-0">
                     <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>
@@ -446,14 +446,18 @@ if ($active_term) {
                     <h5 class="mb-0"><?php echo htmlspecialchars($section['section_code']); ?></h5>
                     <small class="text-white"><?php echo $term_display; ?></small>
                 </div>
-                <div>
+                 <div class="d-flex gap-2">
                     <button class="btn btn-sm btn-secondary edit-section-btn" 
                             data-section-id="<?php echo $section['section_id']; ?>"
                             data-section-code="<?php echo htmlspecialchars($section['section_code']); ?>"
                             data-year-level="<?php echo $section['year_level']; ?>"
                             data-max-students="<?php echo $section['max_students']; ?>">
-                        <i class="bi bi-pencil-square"></i> Edit
-                    </button>    
+                        <i class="bi bi-pencil-square"></i>
+                    </button>  
+                    <button class="btn btn-sm btn-danger delete-section-btn" 
+                            data-section-id="<?php echo $section['section_id']; ?>">
+                        <i class="bi bi-trash"></i>
+                    </button>
                 </div>
             </div>
             <div class="card-body" id="card-body-<?php echo $section['section_id']; ?>">
@@ -1101,7 +1105,6 @@ if (!countBadge) {
     countBadge.className = 'badge bg-primary mb-2 p-2 fs-6';
     sectionsContainer.parentNode.insertBefore(countBadge, sectionsContainer);
 }
-countBadge.textContent = `Showing ${visibleCount} ${visibleCount === 1 ? 'Section' : 'Sections'}`;
   }
 
   // === Event Listeners ===
@@ -1119,6 +1122,47 @@ countBadge.textContent = `Showing ${visibleCount} ${visibleCount === 1 ? 'Sectio
   // === Run once on load ===
   filterSections();
 });
+
+function loadAllSections(termId) {
+
+    // 🔥 Clear the search input
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+
+    fetch('/admin/sections/processes/get_sections.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ term_id: termId })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            const container = $('#sections-container');
+            container.empty(); // clear old sections
+
+            data.sections.forEach(section => {
+                container.append(`
+                    <div class="section-card">
+                        <h4>${section.name}</h4>
+                        <button 
+                            class="delete-section-btn"
+                            data-section-id="${section.id}">
+                            Delete
+                        </button>
+                    </div>
+                `);
+            });
+
+        } else {
+            showAlert('danger', 'Failed to reload sections.');
+        }
+    });
+}
+
 
 
 
@@ -1149,6 +1193,7 @@ function refreshSectionCount(sectionId, termId) {
     })
     .catch(err => console.error('❌ Error refreshing section count:', err));
 }
+
 $(document).ready(function() {
     const $addForm = $('#addSectionForm');
     const $sectionsContainer = $('#sectionsContainer');
@@ -1169,7 +1214,6 @@ $(document).ready(function() {
         const $submitBtn = $(this).find('button[type="submit"]');
         $submitBtn.prop('disabled', true); // Prevent double clicks
 
-        // Use FormData for POST
         const formData = new FormData(this);
 
         $.ajax({
@@ -1201,14 +1245,18 @@ $(document).ready(function() {
                     ${response.term_display || '-'}
                 </small>
             </div>
-            <div>
+            <div class="d-flex gap-2">
                 <button class="btn btn-sm btn-secondary edit-section-btn" 
                         data-section-id="${response.section_id}"
                         data-section-code="${response.formatted_section_code}"
                         data-year-level="${response.year_level || 0}"
                         data-max-students="${response.max_students || 0}"
                         data-term-id="${response.term_id}">
-                    <i class="bi bi-pencil-square"></i> Edit
+                    <i class="bi bi-pencil-square"></i>
+                </button>
+                <button class="btn btn-sm btn-danger delete-section-btn" 
+                        data-section-id="${response.section_id}">
+                    <i class="bi bi-trash"></i>
                 </button>
             </div>
         </div>
@@ -1244,8 +1292,12 @@ $(document).ready(function() {
 </div>
 `;
 
+                    // Add the new card to DOM
                     $sectionsContainer.prepend(newCard);
 
+                     filterSections(); // Re-apply filters to include new section
+                    refreshSectionCount(response.section_id, response.term_id); // Initial count fetch
+                   
                 } else {
                     showAlert('danger', response.message || 'Failed to add section');
                 }
@@ -1435,6 +1487,47 @@ $(document).on('click', '.edit-section-btn', function(e) {
     // Show modal
     bsEditModal.show();
 });
+
+$(document).on('click', '.delete-section-btn', function(e) {
+    e.preventDefault();
+    const button = $(this);
+    const sectionId = button.data('section-id');
+
+    Swal.fire({
+        title: 'Are you sure?',
+        text: 'This action will delete the section permanently.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Proceed with deletion
+            fetch('/admin/sections/processes/delete_section.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ section_id: sectionId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Remove section card from DOM
+                    button.closest('.section-card').remove();
+                    showAlert('success', data.message || 'Section deleted successfully.');
+                    refreshSectionCount(sectionId, window.activeTermId);
+                } else {
+                    showAlert('danger', data.message || 'Failed to delete section.');
+                }
+            })
+            .catch(() => {
+                showAlert('danger', 'Server error occurred while deleting section.');
+            });
+        }
+    });
+});
+
 
 // Form Submit Handler
 $('#editSectionForm').on('submit', function(e) {

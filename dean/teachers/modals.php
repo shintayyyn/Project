@@ -68,7 +68,7 @@
                             <label class="form-label">Status</label>
                             <select class="form-select" name="t_status" required>
                                 <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
+                                <option value="inactive" selected>Inactive</option>
                             </select>
                         </div>
                     </div>
@@ -91,7 +91,7 @@
                     <div class="row">
                         <div class="col-md-12 mb-3">
                             <label class="form-label">Department</label>
-                            <select class="form-select" name="t_department" id="t_department" disabled>
+                            <select class="form-select" name="t_department" id="t_department" required>
                                 <option value="">Select Department</option>
                                 <?php
                                 // Assuming session is started and teacher ID is stored

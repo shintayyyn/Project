@@ -80,6 +80,7 @@ $sql = "
     LEFT JOIN rooms r ON ss.room_id = r.room_id
     WHERE ss.section_id IN ($placeholders)
       AND ss.term_id = ?
+      AND ss.is_active = 1
     ORDER BY ss.subject_code, ss.start_time
 ";
 

@@ -49,7 +49,7 @@ while ($row = $stmt->fetch_assoc()) {
     <!-- Header with breadcrumb and button -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-2">Upload Management</h2>
+            <h2 class="mb-2 fw-bold">Upload Management</h2>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-0">
                     <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>

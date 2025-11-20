@@ -50,7 +50,7 @@ $(document).ready(function() {
                         ${data.t_lname}, ${data.t_fname}
                     </div>
                     `,
-                    data.degree_code || '-',
+                     `<span class="badge bg-warning text-dark rounded-pill">${data.degree_code}</span>`,
                     `<span class="badge bg-${data.t_status.toLowerCase() === 'active' ? 'success' : 'danger'}">
                         ${data.t_status.charAt(0).toUpperCase() + data.t_status.slice(1)}
                     </span>`,
@@ -99,7 +99,7 @@ $(document).ready(function() {
                         ${data.t_lname}, ${data.t_fname}
                     </div>
                     `,
-                    data.degree_code || '-',
+                    `<span class="badge bg-warning text-dark rounded-pill">${data.degree_code}</span>`,
                     `<span class="badge bg-${data.t_status.toLowerCase() === 'active' ? 'success' : 'danger'}">
                         ${data.t_status.charAt(0).toUpperCase() + data.t_status.slice(1)}
                     </span>`,
@@ -215,18 +215,6 @@ $(document).ready(function() {
         <p class="text-muted mb-1"><strong>Contact:</strong> ${data.t_cnum || '-'}</p>
         <p class="text-muted mb-1"><strong>Gender:</strong> ${data.t_gender || '-'}</p>
         <p class="text-muted mb-1"><strong>Birthdate:</strong> ${data.t_bdate ? formatDateForDisplay(data.t_bdate) : '-'}</p>
-        <div class="action-buttons d-flex justify-content-center gap-2 mt-3">
-            <button class="btn btn-sm btn-primary btn-edit-teacher" 
-                    data-bs-toggle="modal" 
-                    data-bs-target="#editTeacherModal" 
-                    data-teacher-id="${data.t_id}">
-                <i class="bi bi-pencil-square me-1"></i>Edit
-            </button>
-            <button class="btn btn-sm btn-danger btn-delete-teacher" 
-                    data-teacher-id="${data.t_id}">
-                <i class="bi bi-trash me-1"></i>Delete
-            </button>
-        </div>
     `;
 
     // Replace any existing teacher details

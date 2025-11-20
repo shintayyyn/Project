@@ -1,32 +1,5 @@
 $(document).ready(function() {
-    // Delete section handler
-    $(document).on('click', '.delete-section-btn', function() {
-        const sectionId = $(this).data('section-id');
-        const $sectionCard = $(this).closest('.col-12.col-lg-4');
-        
-        if (confirm('Are you sure you want to delete this section? This action cannot be undone.')) {
-            $.ajax({
-                url: '/admin/sections/processes/delete_section.php',
-                type: 'POST',
-                data: JSON.stringify({ section_id: sectionId }),
-                contentType: 'application/json',
-                success: function(response) {
-                    const data = typeof response === 'string' ? JSON.parse(response) : response;
-                    if (data.success) {
-                        $sectionCard.fadeOut(300, function() {
-                            $(this).remove();
-                        });
-                        showAlert('success', 'Section deleted successfully');
-                    } else {
-                        showAlert('danger', data.message || 'Failed to delete section');
-                    }
-                },
-                error: function() {
-                    showAlert('danger', 'Server error occurred while deleting section');
-                }
-            });
-        }
-    });
+   
 
     // Assign/Edit Advisor Modal Handler
     $('#assignAdvisorModal').on('show.bs.modal', function(event) {

@@ -16,10 +16,23 @@ $current_term_id = $current_term['term_id'] ?? null;
 // Fetch statistics
 // =======================
 $stats = [
-  'students' => $conn->query("
-    SELECT COUNT(DISTINCT s_id) AS count
-    FROM students_sections
-    WHERE term_id = $current_term_id
+ 'students' => $conn->query("
+    SELECT COUNT(DISTINCT s.s_id) AS count
+    FROM students s
+    WHERE s.is_deleted = 0
+      AND (
+            s.s_id IN (
+                SELECT DISTINCT ss.s_id
+                FROM students_sections ss
+                WHERE ss.term_id = $current_term_id
+            )
+            OR
+            s.s_id IN (
+                SELECT DISTINCT se.s_id
+                FROM subject_enrollments se
+                WHERE se.term_id = $current_term_id
+            )
+      )
 ")->fetch_assoc()['count'],
 
 
@@ -263,15 +276,28 @@ while ($row = $demographics_result->fetch_assoc()) {
     $sections_data[] = (int)$row['sections'];
     $subjects_data[] = (int)$row['subjects'];
 }
-
-
-// Regular vs Irregular
+/* -----------------------------------------------
+   REGULAR vs IRREGULAR (Term-Aware, matched to respective tables)
+------------------------------------------------- */
 $type_sql = "
     SELECT 
-        SUM(CASE WHEN is_regular = 1 THEN 1 ELSE 0 END) AS regular_count,
-        SUM(CASE WHEN is_regular = 0 THEN 1 ELSE 0 END) AS irregular_count
-    FROM students
-    WHERE is_deleted = 0
+        SUM(CASE WHEN s.is_regular = 1 THEN 1 ELSE 0 END) AS regular_count,
+        SUM(CASE WHEN s.is_regular = 2 THEN 1 ELSE 0 END) AS irregular_count
+    FROM students s
+    WHERE s.is_deleted = 0
+      AND (
+            s.s_id IN (
+                SELECT DISTINCT ss.s_id
+                FROM students_sections ss
+                WHERE ss.term_id = $current_term_id
+            )
+            OR
+            s.s_id IN (
+                SELECT DISTINCT se.s_id
+                FROM subject_enrollments se
+                WHERE se.term_id = $current_term_id
+            )
+      )
 ";
 $type_result = $conn->query($type_sql);
 $type_data = $type_result->fetch_assoc();
@@ -279,13 +305,22 @@ $type_data = $type_result->fetch_assoc();
 $regular_count = (int)$type_data['regular_count'];
 $irregular_count = (int)$type_data['irregular_count'];
 
-// Living Situation
+
+
+/* -----------------------------------------------
+   LIVING SITUATION (Term-Aware, matched to students_sections)
+------------------------------------------------- */
 $living_sql = "
     SELECT 
-        SUM(CASE WHEN is_solo = 1 THEN 1 ELSE 0 END) AS with_parents_count,
-        SUM(CASE WHEN is_solo = 2 THEN 1 ELSE 0 END) AS solo_count
-    FROM students
-    WHERE is_deleted = 0
+        SUM(CASE WHEN s.is_solo = 1 THEN 1 ELSE 0 END) AS with_parents_count,
+        SUM(CASE WHEN s.is_solo = 2 THEN 1 ELSE 0 END) AS solo_count
+    FROM students s
+    WHERE s.is_deleted = 0
+      AND s.s_id IN (
+          SELECT DISTINCT ss.s_id
+          FROM students_sections ss
+          WHERE ss.term_id = $current_term_id
+      )
 ";
 $living_result = $conn->query($living_sql);
 $living_data = $living_result->fetch_assoc();
@@ -471,38 +506,65 @@ margin-left:10px;
 
 <div class="row g-3 mb-4">
     <!-- Section Capacity -->
-    <div class="col-xl-8">
+   <div class="col-xl-8">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-header">
                 <div class="d-flex align-items-center">
                     <div>
                         <h5 class="card-title mb-0 text-white">Section Capacity</h5>
-                        <p class=" small mb-0 text-white">Current student distribution across sections</p>
+                        <p class="small mb-0 text-white">Current student distribution across sections</p>
                     </div>
                 </div>
             </div>
+
             <div class="card-body" style="max-height: 400px; overflow-y: auto;">
-                <?php while ($section = $section_stats->fetch_assoc()): ?>
-                    <div class="mb-4">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <div>
-                                <h6 class="mb-0"><?php echo htmlspecialchars($section['section_code']); ?></h6>
-                                <small class="text-muted">
-                                    <?php echo $section['student_count']; ?> of <?php echo $section['max_students']; ?> students
-                                </small>
+                <?php
+                // =======================
+                // Fetch section statistics
+                // =======================
+                $section_stats_query = "
+                    SELECT 
+                        s.section_code, 
+                        COUNT(ss.s_id) AS student_count,
+                        s.max_students,
+                        ROUND((COUNT(ss.s_id) / s.max_students) * 100) AS fill_percentage
+                    FROM sections s
+                    LEFT JOIN students_sections ss 
+                        ON s.section_id = ss.section_id 
+                        AND ss.term_id = $current_term_id
+                    GROUP BY s.section_id
+                    ORDER BY fill_percentage DESC
+                ";
+
+                $section_stats = $conn->query($section_stats_query);
+
+                if ($section_stats->num_rows === 0): ?>
+                    <div class="alert alert-info text-center">No section/s available.</div>
+
+                <?php else: ?>
+                    <?php while ($section = $section_stats->fetch_assoc()): ?>
+                        <div class="mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <h6 class="mb-0"><?= htmlspecialchars($section['section_code']); ?></h6>
+                                    <small class="text-muted">
+                                        <?= $section['student_count']; ?> of <?= $section['max_students']; ?> students
+                                    </small>
+                                </div>
+                                <div class="text-end">
+                                    <h6 class="mb-0"><?= $section['fill_percentage']; ?>%</h6>
+                                </div>
                             </div>
-                            <div class="text-end">
-                                <h6 class="mb-0"><?php echo $section['fill_percentage']; ?>%</h6>
+
+                            <div class="progress">
+                                <div class="progress-bar 
+                                    <?= ($section['fill_percentage'] >= 90 ? 'bg-danger' : ($section['fill_percentage'] >= 75 ? 'bg-warning' : 'bg-success')); ?>" 
+                                    style="width: <?= $section['fill_percentage']; ?>%">
+                                </div>
                             </div>
                         </div>
-                        <div class="progress">
-                            <div class="progress-bar <?php 
-                                echo $section['fill_percentage'] >= 90 ? 'bg-danger' : 
-                                    ($section['fill_percentage'] >= 75 ? 'bg-warning' : 'bg-success'); 
-                            ?>" style="width: <?php echo $section['fill_percentage']; ?>%"></div>
-                        </div>
-                    </div>
-                <?php endwhile; ?>
+                    <?php endwhile; ?>
+                <?php endif; ?>
             </div>
         </div>
     </div>

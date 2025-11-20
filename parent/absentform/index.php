@@ -279,7 +279,7 @@ $(document).ready(function(){
             success: function(schedules){
                 console.log("Schedules returned:", schedules);
                 console.log("Child:", $('#child_id').val());
-console.log("Schedule:", $('#schedule_id').val());
+            console.log("Schedule:", $('#schedule_id').val());
 
                 var $sel = $('#schedule_id');
                 $sel.empty().append('<option></option>');
@@ -344,9 +344,10 @@ console.log("Schedule:", $('#schedule_id').val());
         const daysText = selected.data('days') ? selected.data('days').toUpperCase().trim() : '';
 
         const dayMap = { 'SU': 0, 'M': 1, 'T': 2, 'W': 3, 'TH': 4, 'F': 5, 'S': 6 };
+        const regex = /(TH|SU|M|T|W|F|S)/gi;  // longer tokens first
+
         const activeDays = [];
 
-        const regex = /(SU|M|T|W|TH|F|S)/gi;
         let match;
         while ((match = regex.exec(daysText)) !== null) {
             const key = match[0].toUpperCase();

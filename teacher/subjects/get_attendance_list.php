@@ -43,7 +43,8 @@ $stmt = $conn->prepare("
     JOIN sections_schedules ss 
         ON ss.subject_code = a.subject_code 
        AND ss.section_id = sec.section_id
-       AND ss.term_id = a.term_id   -- ✅ Match attendance term with schedule term
+       AND ss.term_id = a.term_id 
+       AND ss.is_active = 1  -- ✅ Match attendance term with schedule term
     WHERE ss.teacher_id = ? 
       AND a.subject_code = ? 
       AND sec.section_id = ?

@@ -256,7 +256,6 @@ if ($student['is_Mayor']) {
                             <button class="btn btn-sm btn-danger delete-device-btn" 
                                     data-id="<?= $row['id']; ?>" 
                                     data-name="<?= htmlspecialchars($row['student_name']); ?>" 
-                                    data-status="<?= $row['status']; ?>" 
                                     data-bs-toggle="modal" 
                                     data-bs-target="#deleteDeviceModal">
                                 <i class="bi bi-trash"></i>
@@ -276,8 +275,8 @@ if ($student['is_Mayor']) {
 <div class="modal fade" id="editDeviceModal" tabindex="-1" aria-labelledby="editDeviceModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <form id="editDeviceForm" class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="editDeviceModalLabel"><i class="bi bi-pencil-square"></i> Edit Device Status</h5>
+      <div class="modal-header card-header text-white">
+        <h5 class="modal-title" id="editDeviceModalLabel">Update Device Status</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
@@ -285,7 +284,7 @@ if ($student['is_Mayor']) {
           <p>Update device status for <strong id="edit_device_name"></strong></p>
           <div class="d-flex justify-content-around mt-3">
               <button type="button" class="btn btn-success" id="approveBtn">Approve</button>
-              <button type="button" class="btn btn-warning text-dark" id="pendingBtn">Pending</button>
+              <button type="button" class="btn btn-danger" id="rejectedBtn">Reject</button>
           </div>
       </div>
     </form>
@@ -296,17 +295,13 @@ if ($student['is_Mayor']) {
   <div class="modal-dialog">
     <div class="modal-content">
       
-      <div class="modal-header bg-danger text-white">
+      <div class="modal-header card-header text-white">
         <h5 class="modal-title">Delete Device</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
       <div class="modal-body">
-        <p>Are you sure you want to delete this device?</p>
-
-        <p><strong>Name:</strong> <span id="deleteDeviceName"></span></p>
-        <p><strong>Status:</strong> <span id="deleteDeviceStatus" class="badge"></span></p>
-
+        <p>Are you sure you want to delete this registered device of  <span class="fw-bold" id="deleteDeviceName"></span></p>
         <input type="hidden" id="deleteDeviceId">
       </div>
 
@@ -364,9 +359,9 @@ $(document).ready(function () {
         updateStatus("approved");
     });
 
-    $(document).on("click touchstart", "#pendingBtn", function (e) {
+    $(document).on("click touchstart", "#rejectedBtn", function (e) {
         e.preventDefault();
-        updateStatus("pending");
+        updateStatus("rejected");
     });
 
 
@@ -374,9 +369,8 @@ $(document).ready(function () {
 $(document).on("click", ".delete-device-btn", function () {
     const id = $(this).data("id");
     const name = $(this).data("name");
-    const status = $(this).data("status");
 
-    fillDeleteDeviceModal(id, name, status);
+    fillDeleteDeviceModal(id, name);
 });
 
 // Confirm Delete
@@ -426,11 +420,9 @@ function fillDeleteDeviceModal(id, name, status) {
 
     if (status.toLowerCase() === "approved") {
         $("#deleteDeviceStatus").attr("class", "badge bg-success");
-    } else if (status.toLowerCase() === "pending") {
-        $("#deleteDeviceStatus").attr("class", "badge bg-warning text-dark");
-    } else {
-        $("#deleteDeviceStatus").attr("class", "badge bg-danger");
-    }
+    } else if (status.toLowerCase() === "rejected") {
+        $("#deleteDeviceStatus").attr("class", "badge bg-danger ");
+    } 
 }
 
 
@@ -473,7 +465,6 @@ function fillDeleteDeviceModal(id, name, status) {
                 // ✅ Badge HTML
                 let badge = {
                     approved: '<span class="badge bg-success">Approved</span>',
-                    pending: '<span class="badge bg-warning text-dark">Pending</span>',
                     rejected: '<span class="badge bg-danger">Rejected</span>'
                 }[newStatus];
 

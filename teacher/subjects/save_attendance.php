@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['teacher_action'] ?? '') ==
         SELECT subject_id, start_time, end_time
         FROM sections_schedules
         WHERE teacher_id = ? AND subject_code = ? AND section_id = ? 
-          AND term_id = ? AND LOWER(day_of_week) = ?
+          AND term_id = ? AND LOWER(day_of_week) = ? AND is_active =1
         LIMIT 1
     ");
     $schedStmt->bind_param("isiis", $teacher_id, $subject_code, $section_id, $term_id, $currentDay);
@@ -149,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['subject_code'], $_POS
         SELECT subject_id, start_time, end_time
         FROM sections_schedules
         WHERE teacher_id = ? AND subject_code = ? AND section_id = ? 
-          AND term_id = ? AND LOWER(day_of_week) = ?
+          AND term_id = ? AND LOWER(day_of_week) = ? AND is_active = 1
         LIMIT 1
     ");
     $schedStmt->bind_param("isiis", $teacher_id, $subject_code, $section_id, $term_id, $currentDay);
@@ -289,7 +289,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_code'], $_POST['su
 $schedIdStmt = $conn->prepare("
     SELECT subject_id 
     FROM sections_schedules
-    WHERE subject_code = ? AND section_id = ? AND term_id = ?
+    WHERE subject_code = ? AND section_id = ? AND term_id = ? AND is_active = 1
     LIMIT 1
 ");
 $schedIdStmt->bind_param("sii", $subject_code, $section_id, $term_id);
@@ -393,6 +393,7 @@ if ($result->num_rows === 0) {
       AND ss.teacher_id = ? 
       AND ss.term_id = ? 
       AND LOWER(ss.day_of_week) = ?
+      AND ss.is_active = 1
     LIMIT 1
 ");
 $stmt->bind_param("siis", $subject_code, $teacher_id, $term_id, $currentDay);

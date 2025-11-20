@@ -283,7 +283,6 @@ $stmt->close();
 </div>
 
             <div class="table-responsive">
-          
                 <table id="attendanceTable" class="table table-hover table-bordered align-middle">
                     <thead class="card-header text-white">
                         <tr>

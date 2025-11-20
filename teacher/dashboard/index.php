@@ -36,6 +36,7 @@ $sections_query = "
     FROM sections_schedules
     WHERE teacher_id = ?
       AND term_id = ?
+      AND is_active = 1
 ";
 $stmt = $conn->prepare($sections_query);
 $stmt->bind_param("ii", $t_id, $term_id);
@@ -86,6 +87,7 @@ $schedule_query = "
     WHERE ss.teacher_id = ? 
       AND ss.day_of_week = ?
       AND ss.term_id = ?
+      AND ss.is_active = 1
     ORDER BY ss.start_time
 ";
 
@@ -662,7 +664,7 @@ main {
                         'available' => 'bg-success',
                         'asynchronous' => 'bg-info text-dark',
                         'not available' => 'bg-danger',
-                        default => 'bg-secondary',
+                        default => 'bg-success',
                     };
                 ?>
                 <div class="card-body border-bottom">

@@ -31,7 +31,7 @@ if ($term_result && $term_result->num_rows > 0) {
 
 try {
     // Verify teacher has access to this section during active term
-    $access_check = "SELECT 1 FROM sections_schedules WHERE teacher_id = ? AND section_id = ? AND term_id = ? LIMIT 1";
+    $access_check = "SELECT 1 FROM sections_schedules WHERE teacher_id = ? AND section_id = ? AND term_id = ? AND is_active = 1 LIMIT 1";
     $stmt = $conn->prepare($access_check);
     $stmt->bind_param("iii", $teacher_id, $section_id, $term_id);
     $stmt->execute();
@@ -82,7 +82,7 @@ $students_query = "
       AND se.subject_id IN (
             SELECT ss.subject_id 
             FROM sections_schedules ss 
-            WHERE ss.section_id = ? AND ss.term_id = ?
+            WHERE ss.section_id = ? AND ss.term_id = ? AND ss.is_active = 1
           )
       AND se.term_id = ?
       AND st.is_regular = 2

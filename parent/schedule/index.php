@@ -105,7 +105,7 @@ if ($is_regular == 1) {
         JOIN students_sections sts ON sts.section_id = ss.section_id
         LEFT JOIN teachers t ON t.t_id = ss.teacher_id
         LEFT JOIN rooms r ON r.room_id = ss.room_id
-        WHERE sts.s_id = ? AND ss.term_id = ? AND ss.day_of_week = ?
+        WHERE sts.s_id = ? AND ss.term_id = ? AND ss.day_of_week = ? AND ss.is_active = 1
         ORDER BY sub.subject_code, ss.start_time
     ";
     $stmt = $conn->prepare($schedule_query);
@@ -124,7 +124,7 @@ if ($is_regular == 1) {
         JOIN sections_schedules ss ON ss.subject_code = e.subject_code AND ss.section_code = e.section_code AND ss.term_id = ? AND ss.day_of_week = ?
         LEFT JOIN teachers t ON t.t_id = ss.teacher_id
         LEFT JOIN rooms r ON r.room_id = ss.room_id
-        WHERE e.s_id = ? AND e.enrollment_status='Enrolled' AND e.term_id = ?
+        WHERE e.s_id = ? AND e.enrollment_status='Enrolled' AND e.term_id = ? AND ss.is_active = 1
         ORDER BY sub.subject_code, ss.start_time
     ";
     $stmt = $conn->prepare($schedule_query);
@@ -239,9 +239,9 @@ foreach ($period as $d) $dates_in_month[] = ['Y-m-d' => $d->format('Y-m-d'), 'da
 
 $total_classes = 0;
 if ($child['is_regular'] == 1) {
-    $sched_sql = "SELECT ss.day_of_week FROM sections_schedules ss JOIN students_sections sts ON sts.section_id = ss.section_id WHERE sts.s_id = ? AND ss.term_id = ?";
+    $sched_sql = "SELECT ss.day_of_week FROM sections_schedules ss JOIN students_sections sts ON sts.section_id = ss.section_id WHERE sts.s_id = ? AND ss.term_id = ? AND ss.is_active = 1";
 } else {
-    $sched_sql = "SELECT ss.day_of_week FROM sections_schedules ss JOIN subject_enrollments se ON ss.subject_code = se.subject_code AND ss.section_code = se.section_code WHERE se.s_id = ? AND se.term_id = ? AND se.enrollment_status='Enrolled'";
+    $sched_sql = "SELECT ss.day_of_week FROM sections_schedules ss JOIN subject_enrollments se ON ss.subject_code = se.subject_code AND ss.section_code = se.section_code WHERE se.s_id = ? AND se.term_id = ? AND se.enrollment_status='Enrolled' AND ss.is_active = 1";
 }
 $stmt = $conn->prepare($sched_sql);
 $stmt->bind_param("ii", $selected_child_id, $current_term_id);

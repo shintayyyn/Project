@@ -361,12 +361,42 @@ h2.mb-4 {
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <div class="form-group mb-3">
-                                        <label class="form-label">Password</label>
-                                        <input type="password" class="form-control" name="password" placeholder="Enter new password">
-                                        <small class="form-text text-muted">Leave blank to keep current password</small>
-                                    </div>
-                                </div>
+  <div class="form-group mb-3 position-relative">
+    <label class="form-label fw-semibold">Password</label>
+    
+    <input type="password" class="form-control pe-5" id="password" name="password" placeholder="Enter new password">
+    
+    <!-- Eye Icon -->
+    <i class="bi bi-eye-slash" id="togglePassword"
+       style="
+         position: absolute;
+         right: 15px;
+         top: 50%;
+         transform: translateY(-30%);
+         cursor: pointer;
+         color: #6c757d;
+         font-size: 1.1rem;
+       "></i>
+    
+    <small class="form-text text-muted">Leave blank to keep current password</small>
+  </div>
+                        </div>
+
+<!-- Bootstrap Icons CDN -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+<script>
+const togglePassword = document.querySelector('#togglePassword');
+const password = document.querySelector('#password');
+
+togglePassword.addEventListener('click', function () {
+  const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+  password.setAttribute('type', type);
+  this.classList.toggle('bi-eye');
+  this.classList.toggle('bi-eye-slash');
+});
+</script>
+
                             </div>
                            <div class="row align-items-center">
     <div class="col-6 text-start">

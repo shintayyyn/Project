@@ -22,7 +22,11 @@ try {
     $stmt->execute();
 
     $conn->commit();
-    echo json_encode(['success' => true]);
+   echo json_encode([
+    "success" => true,
+    "message" => "Section deleted successfully."
+]);
+
 } catch (Exception $e) {
     $conn->rollback();
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);

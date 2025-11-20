@@ -312,7 +312,7 @@ main {
     <div class="container-fluid px-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h2 class="mb-1">Manage Degrees</h2>
+        <h2 class="mb-1 fw-bold">Manage Degrees</h2>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
                 <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
@@ -447,7 +447,7 @@ main {
                 <div class="d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><?php echo htmlspecialchars($degree_code); ?></h5>
                     <div class="btn-group btn-group-sm">
-                        <button type="button" class="btn btn-primary px-2 edit-degree" data-bs-toggle="modal" data-bs-target="#editDegreeModal">
+                        <button type="button" class="btn btn-warning px-2 edit-degree" data-bs-toggle="modal" data-bs-target="#editDegreeModal">
                             <i class="bi bi-pencil"></i>
                         </button>
                         <button type="button" class="btn btn-danger px-2 delete-degree">
@@ -731,35 +731,49 @@ $(document).ready(function () {
                 });
             });
 
-            // Delete Degree
-            $('.delete-degree').on('click', function() {
-                const degreeCode = $(this).closest('.card').data('degree-code');
-                $('#delete_degree_code').val(degreeCode);
-                $('#deleteDegreeModal').modal('show');
-            });
+         // Delete Degree using SweetAlert
+$('.delete-degree').on('click', function() {
+    const degreeCode = $(this).closest('.card').data('degree-code');
 
-            $('#confirmDelete').on('click', function() {
-                const degreeCode = $('#delete_degree_code').val();
-                $.ajax({
-                    url: '/admin/ajax/degrees_ajax.php',
-                    type: 'POST',
-                    data: {
-                        action: 'delete',
-                        degree_code: degreeCode
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            $('#deleteDegreeModal').modal('hide');
-                            location.reload();
-                        } else {
-                            alert(response.error);
-                        }
-                    },
-                    error: function(xhr) {
-                        alert('Error: ' + xhr.responseJSON?.error || 'Something went wrong');
+    Swal.fire({
+        title: 'Are you sure?',
+        text: `You are about to delete the degree: ${degreeCode}`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // AJAX request to delete degree
+            $.ajax({
+                url: '/admin/ajax/degrees_ajax.php',
+                type: 'POST',
+                data: {
+                    action: 'delete',
+                    degree_code: degreeCode
+                },
+                success: function(response) {
+                    if (response.success) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Deleted!',
+                            text: `Degree ${degreeCode} has been deleted.`,
+                            timer: 1500,
+                            showConfirmButton: false
+                        }).then(() => location.reload());
+                    } else {
+                        Swal.fire('Error', response.error || 'Something went wrong', 'error');
                     }
-                });
+                },
+                error: function(xhr) {
+                    Swal.fire('Error', xhr.responseJSON?.error || 'Something went wrong', 'error');
+                }
             });
+        }
+    });
+});
 
             // Reset forms when modals are closed
             $('.modal').on('hidden.bs.modal', function() {

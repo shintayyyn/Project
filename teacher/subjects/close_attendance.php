@@ -45,6 +45,7 @@ $schedStmt = $conn->prepare("
       AND section_id = ? 
       AND LOWER(day_of_week) = ?
       AND term_id = ?
+      AND is_active = 1
     LIMIT 1
 ");
 $schedStmt->bind_param("sisi", $subject_code, $section_id, $currentDay, $term_id);

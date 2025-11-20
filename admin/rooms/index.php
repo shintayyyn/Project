@@ -33,7 +33,7 @@ table{
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-1">Room Management</h2>
+            <h2 class="mb-1 fw-bold">Room Management</h2>
             <nav aria-label="breadcrumb">
       <ol class="breadcrumb mb-0">
         <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>

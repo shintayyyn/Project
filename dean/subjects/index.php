@@ -112,7 +112,12 @@ if (!empty($subjects_by_degree)) {
 ?>
 
 
+<style>
+.card-body{
+    overflow: hidden;
+}    
 
+</style>
 
 
 <!-- Main content -->
@@ -120,7 +125,7 @@ if (!empty($subjects_by_degree)) {
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
   <!-- Left side: Title + Breadcrumb -->
   <div>
-    <h2 class="mb-1">Subjects Management</h2>
+    <h2 class="mb-1 fw-bold">Subjects Management</h2>
     <nav aria-label="breadcrumb">
       <ol class="breadcrumb mb-0">
         <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>
@@ -184,56 +189,6 @@ if (!empty($subjects_by_degree)) {
 </select>
   </div>
 </div>
-
-
- <div class="d-flex align-items-center gap-2">
-  <label for="searchInput" class="form-label mb-0"></label>
-  <div class="position-relative flex-grow-1">
-    <!-- Search icon inside span -->
-    <span 
-      style="
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--primary);
-        color: var(--tertiary);
-        border-top-left-radius: 8px;
-        border-bottom-left-radius: 8px;
-        width: 38px;
-      ">
-      <i class="fa-brands fa-searchengin fa-lg"></i>
-    </span>
-
-    <!-- Input -->
-    <input 
-      type="text" 
-      id="searchInput" 
-      class="form-control ps-5 pe-5" 
-      placeholder="Search..."
-      style="
-        height: 50px; 
-        border: 1px solid #033A70; 
-        border-radius: 8px; 
-        vertical-align: middle;
-      "
-    >
-
-    <!-- Clear button -->
-    <button 
-      type="button" 
-      id="clearSearch" 
-      class="btn-close position-absolute end-0 top-50 translate-middle-y me-2" 
-      aria-label="Clear search" 
-      style="display:none; width: 38px; height: 38px; font-size: 0.8rem;">
-    </button>
-  </div>
-</div>
-
-
 </div>
 
 <!-- No data message (hidden by default) -->
@@ -251,8 +206,8 @@ if (!empty($subjects_by_degree)) {
                         <?php echo htmlspecialchars($degree_code . ' - ' . $degree_data['degree_name']); ?>
                     </h4>
                 </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive p-3">
+                <div class="card-body p-3">
+                    <div class="table-responsive">
                         <table class="table table-hover align-middle p-2 subjectsTable">
                             <thead>
                                 <tr>
@@ -431,24 +386,32 @@ if (!empty($subjects_by_degree)) {
         allowClear: true
     });
      $(document).ready(function() {
-    $('.subjectsTable').DataTable({
-        paging: true,
-        searching: true,
-        ordering: true,
-        pageLength: 10,
-        lengthMenu: [5, 10, 25, 50, 100],
-        columnDefs: [
-            { orderable: false, targets: -1 } // Disable sorting on last column (Actions)
-        ],
-        language: {
-            lengthMenu: "Show _MENU_ entries",
-            search: "Search:",
-            info: "Showing _START_ to _END_ of _TOTAL_ entries",
-            zeroRecords: "No matching records found",
-            emptyTable: "No data available in table"
-        }
-    });
+   $('.subjectsTable').DataTable({
+    paging: true,
+    searching: true,
+    ordering: true,
+    pageLength: 10,
+    lengthMenu: [5, 10, 25, 50, 100],
+
+    scrollY: "60vh",
+    scrollCollapse: true,
+    scrollX: false, // ❌ no horizontal scroll
+
+    autoWidth: false, // helps prevent auto-expanding columns
+
+    columnDefs: [
+        { orderable: false, targets: -1 } // Disable sorting on last column (Actions)
+    ],
+
+    language: {
+        lengthMenu: "Show _MENU_ entries",
+        search: "Search:",
+        info: "Showing _START_ to _END_ of _TOTAL_ entries",
+        zeroRecords: "No matching records found",
+        emptyTable: "No data available in table"
+    }
 });
+     });
 
 });
 
@@ -626,7 +589,7 @@ if (!empty($subjects_by_degree)) {
             });
         });
     }
-// -------------------- Add Subject --------------------
+
 // -------------------- Add Subject --------------------
 document.getElementById('addSubjectForm').addEventListener('submit', async function (e) {
     e.preventDefault();
