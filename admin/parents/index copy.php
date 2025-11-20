@@ -1,6 +1,6 @@
 <?php
 if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
-    header("Location: /Project/admin/login.php");
+    header("Location: ../admin/login.php");
     exit;
 }
 
@@ -150,7 +150,7 @@ table{
                                         $child_display = $row['s_fname'] ? "$child_name - $child_section" : "No child linked";
 
                                         // Avatar
-                                        $avatar_path = "/Project/uploads/parents/parent_{$row['p_id']}.jpg";
+                                        $avatar_path = "../uploads/parents/parent_{$row['p_id']}.jpg";
                                         $server_path = $_SERVER['DOCUMENT_ROOT'] . $avatar_path;
                                         $avatar_exists = file_exists($server_path);
                                         ?>

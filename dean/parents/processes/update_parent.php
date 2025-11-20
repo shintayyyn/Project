@@ -67,7 +67,7 @@ $check_stmt->close();
 
 // --- Handle Avatar Upload ---
 // --- Handle Avatar Upload ---
-$avatar_path = "/Project/uploads/parents/parent_{$parent_id}.jpg"; 
+$avatar_path = "../uploads/parents/parent_{$parent_id}.jpg"; 
 $server_path = $_SERVER['DOCUMENT_ROOT'] . $avatar_path;
 
 if (isset($_FILES['p_avatar']) && $_FILES['p_avatar']['error'] === UPLOAD_ERR_OK) {

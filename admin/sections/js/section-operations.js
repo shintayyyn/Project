@@ -133,38 +133,68 @@ $(document).ready(function() {
         const sectionId = $(this).data('section-id');
         const $advisorContainer = $(this).closest('.advisor-container');
         
-        if (confirm('Are you sure you want to remove this advisor from the section?')) {
-            $.ajax({
-                url: '/admin/sections/processes/unassign_advisor.php',
-                type: 'POST',
-                data: JSON.stringify({ section_id: sectionId }),
-                contentType: 'application/json',
-                success: function(response) {
-                    const data = typeof response === 'string' ? JSON.parse(response) : response;
-                    if (data.success) {
-                        $advisorContainer.html(`
-                            <div class="advisor-name">
-                                <span class="text-muted me-2">No advisor assigned</span>
-                                <button type="button" 
-                                        class="btn btn-sm btn-success assign-advisor-btn"
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#assignAdvisorModal"
-                                        data-section-id="${sectionId}"
-                                        data-mode="add">
-                                    <i class="bi bi-person-plus"></i>
-                                </button>
-                            </div>
-                        `);
-                        showAlert('success', 'Advisor unassigned successfully');
-                    } else {
-                        showAlert('danger', data.message || 'Failed to unassign advisor');
-                    }
-                },
-                error: function() {
-                    showAlert('danger', 'Server error occurred while unassigning advisor');
+       Swal.fire({
+    title: "Are you sure?",
+    text: "Do you want to remove this advisor from the section?",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "Yes, remove",
+    cancelButtonText: "Cancel",
+    reverseButtons: true
+}).then((result) => {
+    if (result.isConfirmed) {
+
+        $.ajax({
+            url: '/admin/sections/processes/unassign_advisor.php',
+            type: 'POST',
+            data: JSON.stringify({ section_id: sectionId }),
+            contentType: 'application/json',
+            success: function(response) {
+                const data = typeof response === 'string' ? JSON.parse(response) : response;
+
+                if (data.success) {
+
+                    $advisorContainer.html(`
+                        <div class="advisor-name">
+                            <span class="text-muted me-2">No advisor assigned</span>
+                            <button type="button" 
+                                    class="btn btn-sm btn-success assign-advisor-btn"
+                                    data-bs-toggle="modal" 
+                                    data-bs-target="#assignAdvisorModal"
+                                    data-section-id="${sectionId}"
+                                    data-mode="add">
+                                <i class="bi bi-person-plus"></i>
+                            </button>
+                        </div>
+                    `);
+
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Advisor unassigned successfully',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: data.message || 'Failed to unassign advisor'
+                    });
                 }
-            });
-        }
+            },
+            error: function() {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Server Error',
+                    text: 'Server error occurred while unassigning advisor'
+                });
+            }
+        });
+
+    }
+});
+
     });
 
 });

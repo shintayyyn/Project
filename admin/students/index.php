@@ -156,7 +156,7 @@ $result = $conn->query($sql);
 <div class="container-fluid p-0">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-1">Manage Students</h2>
+            <h2 class="mb-1 fw-bold">Manage Students</h2>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-0">
                     <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>

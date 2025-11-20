@@ -909,7 +909,7 @@ switch ($page) {
                 const messageContainer = document.getElementById('messageContainer') || document.createElement('div');
                 
                 try {
-                    const response = await fetch('/Project/dean/students/processes/edit_student.php', {
+                    const response = await fetch('../dean/students/processes/edit_student.php', {
                         method: 'POST',
                         body: new FormData(this)
                     });

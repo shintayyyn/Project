@@ -411,6 +411,32 @@ main {
   </div>
 </div>
 
+<?php
+$verified = 0;
+$hasRecord = 0;
+
+// Check latest email_verifications
+$stmt = $conn->prepare("
+    SELECT verified 
+    FROM email_verifications 
+    WHERE user_id = ? AND user_type = ? AND new_email = ?
+    ORDER BY id DESC LIMIT 1
+");
+$stmt->bind_param("iss", $_SESSION['user_id'], $_SESSION['user_type'], $student['s_email']);
+$stmt->execute();
+$result = $stmt->get_result()->fetch_assoc();
+
+if ($result) {
+    $hasRecord = 1;
+    $verified = $result['verified']; // 0 or 1
+}
+?>
+
+<script>
+let originalEmail = "<?php echo addslashes($student['s_email']); ?>";
+let emailHasRecord = <?php echo $hasRecord; ?>;
+let emailIsVerified = <?php echo $verified; ?>;
+</script>
 
 
 <script>
@@ -555,10 +581,23 @@ if (!otpVerified) {   // ✅ only reopen if OTP is not verified
 
     function sendOtp() {
         const newEmail = emailInput.value.trim();
-        if (!newEmail || newEmail === originalEmail) {
-            showAlert("danger", "Enter a new email different from your current one.");
-            return;
-        }
+        if (!newEmail) {
+    showAlert("danger", "Please enter an email address.");
+    return;
+}
+
+if (newEmail === originalEmail) {
+    // Case: Same email, but NOT verified or NO record → ALLOW OTP
+    if (emailIsVerified == 0 || emailHasRecord == 0) {
+        // allow sendOtp() to proceed
+    }
+    // Case: Same email and VERIFIED → BLOCK
+    else if (emailIsVerified == 1) {
+        showAlert("danger", "This email is already verified. Enter a different one.");
+        return;
+    }
+}
+
 
         fetch("../verify_email/request_email_update.php", {
             method: "POST",

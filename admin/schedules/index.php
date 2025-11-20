@@ -1138,35 +1138,61 @@ function updateScheduleTeachers(subjectCode, teacherName) {
 }
 
 
-    // Delete Schedule Handler
-    document.querySelectorAll('.delete-schedule-btn').forEach(button => {
-        button.addEventListener('click', function() {
-            if (confirm('Are you sure you want to delete this schedule?')) {
-                const scheduleId = this.dataset.scheduleId;
+     // Delete Schedule Handler
+document.querySelectorAll('.delete-schedule-btn').forEach(button => {
+    button.addEventListener('click', function() {
+        const scheduleId = this.dataset.scheduleId;
+
+        Swal.fire({
+            title: 'Are you sure?',
+            text: 'Do you want to delete this schedule?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, delete it',
+            cancelButtonText: 'Cancel',
+            reverseButtons: true
+        }).then((result) => {
+            if (result.isConfirmed) {
                 const formData = new FormData();
                 formData.append('action', 'delete_schedule');
                 formData.append('schedule_id', scheduleId);
-                
-                fetch(' /admin/ajax/schedules_ajax.php', {
+
+                fetch('/admin/ajax/schedules_ajax.php', {
                     method: 'POST',
                     body: formData
                 })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        showAlert('success', 'Schedule deleted successfully!');
-                        setTimeout(() => window.location.reload(), 1000);
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Deleted!',
+                            text: 'Schedule deleted successfully.',
+                            timer: 1000,
+                            showConfirmButton: false
+                        }).then(() => {
+                            window.location.reload();
+                        });
                     } else {
-                        showAlert('danger', data.error || 'Error deleting schedule');
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: data.error || 'Error deleting schedule'
+                        });
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    showAlert('danger', 'Error deleting schedule');
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'Error deleting schedule'
+                    });
                 });
             }
         });
     });
+});
 
 
     // Handle subject selection change for Add Schedule

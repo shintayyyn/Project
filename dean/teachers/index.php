@@ -107,7 +107,7 @@ $result = $conn->query($sql);
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-1">Manage Teachers</h2>
+            <h2 class="mb-1 fw-bold">Manage Teachers</h2>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-0">
                     <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>
@@ -190,7 +190,7 @@ $result = $conn->query($sql);
                     <?= $full_name ?>
                 </div>
             </td>
-            <td><?= htmlspecialchars($row['department_name']) ?></td>
+            <td><span class="badge bg-warning text-dark rounded-pill"><?= htmlspecialchars($row['department_name']) ?></span></td>
             <td>
                 <span class="badge bg-<?= $row['t_status'] === 'active' ? 'success' : 'danger' ?>">
                     <?= ucfirst($row['t_status']) ?>
@@ -218,7 +218,7 @@ $result = $conn->query($sql);
         <div class="col-lg-4">
             <div class="card shadow-sm" id="teacherDetailsCard">
              <div class="card-header d-flex justify-content-between align-items-center">
-               <h5 class="mb-0 fw-bold">Personal Information</h5>
+                <h5 class="mb-0 fw-bold">Teacher's Info</h5>
                 </div>
                 <div id="teacherDetailsBody" class="card-body"></div>
                 <div class="card-body" id="teacherDetailsBody">
@@ -246,32 +246,30 @@ $result = $conn->query($sql);
 <script src="./teachers/js/add_teacher.js"></script>
 <script src="./teachers/js/delete_teacher.js"></script>
 <script>
- // Initialize DataTable globally
-window.table = $('#teachersTable').DataTable({
-  scrollY: '50vh',
-  scrollCollapse: true,
-  paging: true,
-  responsive: {
-    details: {
-      type: 'column',
-      target: 0
-    }
-  },
-  columnDefs: [
-    { className: 'dtr-control', orderable: false, targets: 0 },
-    { targets: [4, 5, 6, 7, 8], visible: false } // Hide extra columns
-  ],
-  order: [[1, 'asc']],
-  language: {
-    emptyTable: "No data available",
-    paginate: {
-      previous: "Previous",
-      next: "Next"
-    }
-  },
-  dom: '<"top d-flex justify-content-between mb-2"lf>rt<"bottom d-flex justify-content-between align-items-center mt-2"ip><"clear">'
-});
-
+  // Initialize DataTable globally
+  window.table = $('#teachersTable').DataTable({
+    scrollY: '50vh',
+    scrollCollapse: true,
+    paging: true,
+    responsive: {
+      details: {
+        type: 'column',
+        target: 0
+      }
+    },
+    columnDefs: [
+      { className: 'dtr-control', orderable: false, targets: 0 },
+      { targets: [4, 5, 6, 7, 8], visible: false } // Hide extra columns
+    ],
+    order: [[1, 'asc']],
+    language: {
+      paginate: {
+        previous: "Previous",
+        next: "Next"
+      }
+    },
+    dom: '<"top d-flex justify-content-between mb-2"lf>rt<"bottom d-flex justify-content-between align-items-center mt-2"ip><"clear">'
+  });
 
   // Sticky footer for pagination controls
   $('.bottom').css({
@@ -330,7 +328,7 @@ window.table = $('#teachersTable').DataTable({
       ? `<img src="/uploads/teachers/${teacherAvatar}" 
                alt="Teacher Avatar" class="rounded-circle mb-3" 
                style="width:120px; height:120px; object-fit:cover;">`
-      : `<div class="profile-avatar mx-auto mb-3 d-flex align-items-center justify-content-center bg-secondary text-white rounded-circle"
+      : `<div class="profile-avatar mx-auto mb-3 d-flex align-items-center justify-content-center text-white rounded-circle"
                style="width:120px; height:120px; font-size:2rem; font-weight:bold;">
            ${teacherName.split(/[ ,]+/).map(n => n.charAt(0)).join('').substring(0,2).toUpperCase()}
          </div>`;

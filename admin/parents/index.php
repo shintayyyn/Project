@@ -1,6 +1,6 @@
 <?php
 if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
-    header("Location: /Project/admin/login.php");
+    header("Location: ../admin/login.php");
     exit;
 }
 
@@ -120,7 +120,7 @@ $result = $conn->query($sql);
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-1">Manage Parents</h2>
+            <h2 class="mb-1 fw-bold">Manage Parents</h2>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb mb-0">
                     <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>
@@ -201,7 +201,7 @@ $result = $conn->query($sql);
         }
 
         // Avatar
-        $avatar_path = $p_id ? "/Project/uploads/parents/parent_{$p_id}.jpg" : '';
+        $avatar_path = $p_id ? "../uploads/parents/parent_{$p_id}.jpg" : '';
         $server_path = $_SERVER['DOCUMENT_ROOT'] . $avatar_path;
         $avatar_exists = file_exists($server_path);
         $initials = $p_id ? strtoupper(substr($row['p_fname'], 0, 1) . substr($row['p_lname'], 0, 1)) : '';

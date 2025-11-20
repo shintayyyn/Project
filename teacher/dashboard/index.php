@@ -594,38 +594,9 @@ main {
 
         <!-- Stats Cards -->
         <div class="row g-4 mb-4">
-            <!-- Total Subjects -->
-            <div class="col-12 col-sm-6 col-lg-3">
-                <div class="card stats-card">
-                    <div class="card-body">
-                        <div class="stats-icon bg-primary bg-opacity-10 text-primary rounded p-3 mb-3">
-                            <i class="bi bi-book fs-4"></i>
-                        </div>
-                        <div class="d-flex flex-column align-items-center">
-                            <h2 class="stats-number mb-0"><?php echo $total_subjects; ?></h2>
-                            <span class="stats-label">Total Subjects</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Total Sections -->
-            <div class="col-12 col-sm-6 col-lg-3">
-                <div class="card stats-card">
-                    <div class="card-body">
-                        <div class="stats-icon bg-success bg-opacity-10 text-success rounded p-3 mb-3">
-                            <i class="bi bi-people fs-4"></i>
-                        </div>
-                        <div class="d-flex flex-column align-items-center">
-                            <h2 class="stats-number mb-0"><?php echo $total_sections; ?></h2>
-                            <span class="stats-label">Total Sections</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
             <!-- Quick Actions -->
-            <div class="col-12 col-lg-6">
+            <div class="col-12">
                 <div class="card h-100">
                     <div class="card-body">
                         <h6 class="card-subtitle mb-4 text-muted text-center">Quick Actions</h6>
@@ -646,7 +617,7 @@ main {
                                 <i class="bi bi-person"></i>
                                 <span>Profile</span>
                             </a>
-                            <a href="../../Project/logout.php" class="quick-action-btn">
+                            <a href="../../../logout.php" class="quick-action-btn">
                                 <i class="bi bi-box-arrow-right"></i>
                                 <span>Logout</span>
                             </a>

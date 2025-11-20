@@ -217,6 +217,10 @@ session_start();
             <input type="text" id="otp" class="form-control" placeholder="Enter OTP" required>
           </div>
           <button id="verify-otp" class="btn btn-primary w-100">Verify OTP</button>
+          <button id="resend-otp" class="btn btn-outline-secondary w-100 mt-2" style="display:none;">
+          Resend OTP
+        </button>
+
         </div>
 
         <!-- Step 3: New Password -->
@@ -245,71 +249,175 @@ session_start();
   <div id="toast-container"></div>
 </div>
 
+    <!-- SweetAlert2 CSS -->
+<link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+
+<!-- SweetAlert2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
-// Toast
-function showToast(msg, type="info"){
-  const toastId = "t"+Date.now();
-  const bg = type === "success" ? "bg-success" : type==="error"?"bg-danger":"bg-info";
-  const html = `<div id="${toastId}" class="toast align-items-center text-white ${bg} border-0 mb-2" role="alert" aria-live="assertive" aria-atomic="true">
-    <div class="d-flex">
-      <div class="toast-body">${msg}</div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-    </div>
-  </div>`;
-  $("#toast-container").append(html);
-  const t = new bootstrap.Toast(document.getElementById(toastId), { delay: 3000 });
-  t.show();
+
+// =========================
+// SWEETALERT HELPER
+// =========================
+function showAlert(type, message) {
+    type = (type || "info").toLowerCase();
+
+    let icon, title;
+
+    switch(type) {
+        case "success": icon = "success"; title = "Success!"; break;
+        case "error": case "danger": icon = "error"; title = "Error!"; break;
+        case "info": icon = "info"; title = "Notice"; break;
+        case "warning": icon = "warning"; title = "Warning!"; break;
+        default: icon = "info"; title = "Notice";
+    }
+
+    Swal.fire({
+        icon: icon,
+        title: title,
+        text: message || "",
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 5000,
+        timerProgressBar: true,
+        didOpen: (toast) => {
+            toast.addEventListener("mouseenter", Swal.stopTimer);
+            toast.addEventListener("mouseleave", Swal.resumeTimer);
+        }
+    });
 }
 
-// Step 1: Send OTP
+let otpExpiresAt = null; // store expiry time globally
+
+
+// =========================
+// STEP 1 — SEND OTP
+// =========================
 $("#send-otp").click(function(){
+
   $.post("process_reset.php", {
-    action:"send_otp", 
-    user_id: $("#user_id").val(), 
-    email: $("#email").val()
+        action: "send_otp",
+        user_id: $("#user_id").val(),
+        email: $("#email").val()
   }, function(data){
-    if(data.success){
-      showToast("OTP sent!", "success");
-      $("#step1").hide(); $("#step2").show();
-    } else showToast(data.error, "error");
+
+        if (data.success) {
+
+            // Store expiry time sent by PHP
+            otpExpiresAt = data.expires_at; // example: "2025-02-18 10:45:00"
+
+            showAlert("success", "OTP sent! Expires at: " + otpExpiresAt);
+
+            $("#step1").hide();
+            $("#step2").show();
+            $("#resend-otp").hide(); // hide resend until needed
+
+        } else {
+            showAlert("error", data.error);
+        }
+
   }, "json");
 });
 
-// Step 2: Verify OTP
+
+// =========================
+// STEP 2 — VERIFY OTP
+// =========================
 $("#verify-otp").click(function(){
+
   $.post("process_reset.php", {
-    action:"verify_otp", 
-    user_id: $("#user_id").val(), 
-    otp: $("#otp").val()
+        action: "verify_otp",
+        user_id: $("#user_id").val(),
+        otp: $("#otp").val()
   }, function(data){
-    if(data.success){
-      showToast("OTP verified!", "success");
-      $("#step2").hide(); $("#step3").show();
-    } else showToast(data.error, "error");
+
+        if (data.success) {
+
+            showAlert("success", "OTP verified!");
+            $("#step2").hide();
+            $("#step3").show();
+            $("#resend-otp").hide();
+
+        } else {
+
+            showAlert("error", data.error);
+
+            // If expired → allow resend
+            if (data.error.toLowerCase().includes("expired")) {
+                $("#resend-otp").show();
+            }
+        }
+
   }, "json");
+
 });
 
-// Step 3: Save Password
-$("#save-password").click(function(){
-  const new_pass = $("#new-password").val();
-  const confirm_pass = $("#confirm-password").val();
-  if(new_pass !== confirm_pass){
-    showToast("Passwords do not match!", "error");
-    return;
-  }
+
+// =========================
+// RESEND OTP (ONLY AFTER EXPIRATION)
+// =========================
+$("#resend-otp").click(function(){
+
   $.post("process_reset.php", {
-    action:"save_password", 
-    user_id: $("#user_id").val(), 
-    password:new_pass
+        action: "send_otp",
+        user_id: $("#user_id").val(),
+        email: $("#email").val()
   }, function(data){
-    if(data.success){
-      showToast("Password updated!", "success");
-      setTimeout(()=>window.location.href="login.php", 2000);
-    } else showToast(data.error, "error");
+
+        if (data.success) {
+
+            otpExpiresAt = data.expires_at; // update expiry
+
+            showAlert("success", "New OTP sent! Expires at: " + otpExpiresAt);
+
+            $("#otp").val(""); // clear field
+            $("#resend-otp").hide();
+            $("#step2").show();
+
+        } else {
+            showAlert("error", data.error);
+        }
+
   }, "json");
+
 });
+
+
+// =========================
+// STEP 3 — SAVE PASSWORD
+// =========================
+$("#save-password").click(function(){
+
+    const new_pass = $("#new-password").val();
+    const confirm_pass = $("#confirm-password").val();
+
+    if (new_pass !== confirm_pass) {
+        showAlert("error", "Passwords do not match!");
+        return;
+    }
+
+    $.post("process_reset.php", {
+        action: "save_password",
+        user_id: $("#user_id").val(),
+        password: new_pass
+    }, function(data){
+
+        if (data.success) {
+            showAlert("success", "Password updated!");
+            setTimeout(() => window.location.href = "login.php", 2000);
+        } else {
+            showAlert("error", data.error);
+        }
+
+    }, "json");
+
+});
+
 </script>
+
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>

@@ -572,7 +572,7 @@ if ($active_term) {
                    <!-- Degree Selection -->
                     <div class="mb-3">
                         <label class="form-label">Degree Program</label>
-                        <select name="degree_id" id="degreeSelect" class="form-select" disabled>
+                        <select name="degree_id" id="degreeSelect" class="form-select"  required>
                             <option value="" disabled selected>Select a Degree</option>
                             <?php
                             // Assuming session is started and teacher ID is in session

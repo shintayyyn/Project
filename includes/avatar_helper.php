@@ -37,8 +37,8 @@ function getAvatarHTML($conn, $userId, $type = 'parent', $size = 35) {
         "uploads/{$type}s/{$type}_{$userId}.jpg",
         "uploads/{$type}s/{$type}_{$userId}.jpeg",
         "uploads/{$type}s/{$type}_{$userId}.png",
-        "/Project/uploads/{$type}s/{$type}_{$userId}.jpg",
-        "/Project/uploads/{$type}s/{$type}_{$userId}.png",
+        "../uploads/{$type}s/{$type}_{$userId}.jpg",
+        "../uploads/{$type}s/{$type}_{$userId}.png",
     ];
 
     foreach ($candidates as $rel) {

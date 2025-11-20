@@ -341,12 +341,12 @@ th{
                         <?= htmlspecialchars(strtoupper(substr($teacher['t_fname'],0,1).substr($teacher['t_lname'],0,1))) ?>
                     </div>
                     <div class="profile-info">
-                        <h3>Generate Attendance Reports</h3>
+                        <h3>Attendance Reports</h3>
                         <p>Attendance Reports for Section</p>
                     </div>
                     <div class="ms-auto">
                         <button type="button" class="btn btn-ni" id="openExportModal">
-                        <i class="bi bi-file-earmark-excel me-2"></i> Download Report
+                        <i class="bi bi-file-earmark-excel me-2"></i> Make a Report
                         </button>
                     </div>
                 </div>

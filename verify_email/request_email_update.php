@@ -63,20 +63,37 @@ $stmt->close();
 $currentEmail = $userData[$email_col] ?? null;
 
 // --------------------
-// 4️⃣ Check if email is user's current verified email
+// 4️⃣ Determine if new email matches current email
+// --------------------
+$isSameEmail = ($new_email === $currentEmail);
+
+// --------------------
+// 5️⃣ Check email_verifications status for THIS user + email
 // --------------------
 $stmt = $conn->prepare("
-    SELECT 1 
+    SELECT verified 
     FROM email_verifications
-    WHERE user_id = ? AND user_type = ? AND new_email = ? AND verified = 1
+    WHERE user_id = ? 
+      AND user_type = ? 
+      AND new_email = ?
+    ORDER BY id DESC 
     LIMIT 1
 ");
 $stmt->bind_param("iss", $user_id, $user_type, $new_email);
 $stmt->execute();
-$res = $stmt->get_result();
+$verification = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
-if ($res->num_rows > 0) {
+$hasRecord = $verification ? 1 : 0;
+$isVerified = $verification['verified'] ?? 0;
+
+// ----------------------------------------------------------------
+// 🎯 FINAL DECISION RULES:
+// 1. Same email + verified → BLOCK
+// 2. Same email + NOT verified → ALLOW
+// 3. New email → ALLOW
+// ----------------------------------------------------------------
+if ($isSameEmail && $hasRecord && $isVerified == 1) {
     echo json_encode([
         'status' => 'warning',
         'message' => 'It is still your current email, kindly use a new one to proceed.'
@@ -118,7 +135,7 @@ foreach ($tables as $tbl) {
 }
 
 // --------------------
-// 5️⃣ Check last unverified OTP
+// 6️⃣ Check last unverified OTP cooldown
 // --------------------
 $stmt = $conn->prepare("
     SELECT id, new_email, expires_at, created_at
@@ -137,7 +154,7 @@ if ($lastOtp) {
     $expiresAt = new DateTime($lastOtp['expires_at']);
     $createdAt = new DateTime($lastOtp['created_at']);
 
-    // Only enforce cooldown if previous OTP is still valid
+    // Only enforce cooldown while OTP is still valid
     if ($expiresAt > $now) {
         $cooldown = clone $createdAt;
         $cooldown->modify('+2 minutes');
@@ -154,7 +171,7 @@ if ($lastOtp) {
 }
 
 // --------------------
-// 6️⃣ Generate and save new OTP (10 min expiration)
+// 7️⃣ Generate and save new OTP (10 min expiration)
 // --------------------
 $otp = random_int(100000, 999999);
 $expires_at = (new DateTime())->modify('+10 minutes')->format("Y-m-d H:i:s");
@@ -172,7 +189,7 @@ if (!$stmt->execute()) {
 $stmt->close();
 
 // --------------------
-// 7️⃣ Send OTP email
+// 8️⃣ Send OTP email
 // --------------------
 $subject = "Email Verification OTP";
 $body = "

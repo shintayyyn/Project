@@ -245,14 +245,22 @@ if ($student['is_Mayor']) {
                         </td>
                        <?php if($student['is_Mayor']): ?>
                        <td>
-                            <button class="btn btn-sm btn-primary edit-device-btn" 
+                            <button class="btn btn-sm btn-warning edit-device-btn" 
                                     data-id="<?= $row['id']; ?>" 
                                     data-name="<?= htmlspecialchars($row['student_name']); ?>" 
                                     data-status="<?= $row['status']; ?>" 
                                     data-bs-toggle="modal" 
                                     data-bs-target="#editDeviceModal">
-                                Edit
+                               <i class="bi bi-pencil-square"></i>
                             </button>
+                            <button class="btn btn-sm btn-danger delete-device-btn" 
+                                    data-id="<?= $row['id']; ?>" 
+                                    data-name="<?= htmlspecialchars($row['student_name']); ?>" 
+                                    data-status="<?= $row['status']; ?>" 
+                                    data-bs-toggle="modal" 
+                                    data-bs-target="#deleteDeviceModal">
+                                <i class="bi bi-trash"></i>
+                                </button>
                         </td>
                         <?php endif; ?>
                        <td><?= date("M d, Y h:i A", strtotime($row['created_at'])); ?></td>
@@ -278,12 +286,41 @@ if ($student['is_Mayor']) {
           <div class="d-flex justify-content-around mt-3">
               <button type="button" class="btn btn-success" id="approveBtn">Approve</button>
               <button type="button" class="btn btn-warning text-dark" id="pendingBtn">Pending</button>
-              <button type="button" class="btn btn-danger" id="rejectBtn">Reject</button>
           </div>
       </div>
     </form>
   </div>
 </div>
+
+<div class="modal fade" id="deleteDeviceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">Delete Device</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <p>Are you sure you want to delete this device?</p>
+
+        <p><strong>Name:</strong> <span id="deleteDeviceName"></span></p>
+        <p><strong>Status:</strong> <span id="deleteDeviceStatus" class="badge"></span></p>
+
+        <input type="hidden" id="deleteDeviceId">
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-danger" id="confirmDeleteDevice">Delete</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+
 <script>
 $(document).ready(function () {
 
@@ -332,10 +369,69 @@ $(document).ready(function () {
         updateStatus("pending");
     });
 
-    $(document).on("click touchstart", "#rejectBtn", function (e) {
-        e.preventDefault();
-        updateStatus("rejected");
+
+// Handle Delete button click
+$(document).on("click", ".delete-device-btn", function () {
+    const id = $(this).data("id");
+    const name = $(this).data("name");
+    const status = $(this).data("status");
+
+    fillDeleteDeviceModal(id, name, status);
+});
+
+// Confirm Delete
+$(document).on("click", "#confirmDeleteDevice", function () {
+    const deviceId = $("#deleteDeviceId").val();
+
+    $.ajax({
+        url: "approve_devices/delete_device.php",
+        method: "POST",
+        data: { id: deviceId },
+        dataType: "json",
+
+        success: function (response) {
+
+            if (!response.success) {
+                showAlert("error", response.message);
+                return;
+            }
+
+            // Close modal
+            $("#deleteDeviceModal").modal("hide");
+
+            // Remove row from DataTable
+            let table = $("#devicesTable").DataTable();
+            let row = $("#status-" + deviceId).closest("tr");
+
+            if (row.hasClass("child")) {
+                row = row.prev(); // parent row if responsive child shown
+            }
+
+            table.row(row).remove().draw(false);
+
+            showAlert("success", "Device successfully deleted.");
+        },
+
+        error: function () {
+            showAlert("error", "Server error while deleting device.");
+        }
     });
+});
+
+
+function fillDeleteDeviceModal(id, name, status) {
+    $("#deleteDeviceId").val(id);
+    $("#deleteDeviceName").text(name);
+    $("#deleteDeviceStatus").text(status);
+
+    if (status.toLowerCase() === "approved") {
+        $("#deleteDeviceStatus").attr("class", "badge bg-success");
+    } else if (status.toLowerCase() === "pending") {
+        $("#deleteDeviceStatus").attr("class", "badge bg-warning text-dark");
+    } else {
+        $("#deleteDeviceStatus").attr("class", "badge bg-danger");
+    }
+}
 
 
     // ✅ Main function

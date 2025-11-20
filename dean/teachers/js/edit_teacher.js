@@ -161,18 +161,6 @@ if (response.success) {
             <p class="text-muted mb-1"><strong>Birthdate:</strong> ${formatDateForDisplay(response.data.t_bdate)}</p>
             <p class="text-muted mb-1"><strong>Contact:</strong> ${response.data.t_cnum || '-'}</p>
             
-            <div class="action-buttons d-flex justify-content-center gap-2 mt-3">
-                <button class="btn btn-sm btn-primary btn-edit-teacher" 
-                        data-bs-toggle="modal" 
-                        data-bs-target="#editTeacherModal" 
-                        data-teacher-id="${response.data.t_id}">
-                    <i class="bi bi-pencil-square me-1"></i>Edit
-                </button>
-                <button class="btn btn-sm btn-danger btn-delete-teacher" 
-                        data-teacher-id="${response.data.t_id}">
-                    <i class="bi bi-trash me-1"></i>Delete
-                </button>
-            </div>
         `);
     }
 

@@ -1,13 +1,13 @@
 <?php
-if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
-    header("Location: /Project/admin/login.php");
+if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'dean') {
+    header("Location: ../dean/login.php");
     exit;
 }
 
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/avatar_helper.php';
 
-$base_url = '/admin/parents/processes';
+$base_url = '/dean/parents/processes';
 $search = isset($_GET['search']) ? $conn->real_escape_string($_GET['search']) : '';
 $search_condition = $search ? "WHERE p.p_fname LIKE '%$search%' OR p.p_lname LIKE '%$search%' OR p.idcode LIKE '%$search%'" : '';
 /**
@@ -150,7 +150,7 @@ table{
                                         $child_display = $row['s_fname'] ? "$child_name - $child_section" : "No child linked";
 
                                         // Avatar
-                                        $avatar_path = "/Project/uploads/parents/parent_{$row['p_id']}.jpg";
+                                        $avatar_path = "../uploads/parents/parent_{$row['p_id']}.jpg";
                                         $server_path = $_SERVER['DOCUMENT_ROOT'] . $avatar_path;
                                         $avatar_exists = file_exists($server_path);
                                         ?>
@@ -237,8 +237,8 @@ table{
 <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="/admin/parents/js/edit_parent.js"></script>
-<script src="/admin/parents/js/delete_parent.js"></script>
+<script src="/dean/parents/js/edit_parent.js"></script>
+<script src="/dean/parents/js/delete_parent.js"></script>
 
 <script>
 $(document).ready(function() {

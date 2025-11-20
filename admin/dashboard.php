@@ -890,7 +890,7 @@ function handleEditStudentSubmit(formId) {
         const messageContainer = document.getElementById('messageContainer') || document.createElement('div');
 
         try {
-            const response = await fetch('/Project/admin/students/processes/edit_student.php', {
+            const response = await fetch('../admin/students/processes/edit_student.php', {
                 method: 'POST',
                 body: new FormData(this)
             });
