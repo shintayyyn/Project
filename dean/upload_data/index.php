@@ -16,7 +16,7 @@ $page_title = "Upload Data";
 
 // Fetch upload history
 $upload_history = [];
-$stmt = $conn->query("SELECT * FROM upload_history WHERE uploaded_by = 'dean' ORDER BY uploaded_at DESC");
+$stmt = $conn->query("SELECT * FROM upload_history WHERE uploaded_by = 'dean' OR uploaded_by = 'teacher' ORDER BY uploaded_at DESC");
 while ($row = $stmt->fetch_assoc()) {
     $upload_history[] = $row;
 }
@@ -344,35 +344,67 @@ $('#uploadForm').on('submit', function (e) {
 
         const filename = file.name;
 
-        $.ajax({
-            url: '/dean/upload_data/process_upload.php',
-            type: 'POST',
-            data: {
-                excelData: JSON.stringify(jsonArray),
-                filename: filename
-            },
-            success: function (response) {
-                let res = response;
-                if (typeof response === 'string') {
-                    try {
-                        res = JSON.parse(response);
-                    } catch (e) {}
-                }
+ $.ajax({
+    url: '/dean/upload_data/process_upload.php',
+    type: 'POST',
+    data: {
+        excelData: JSON.stringify(jsonArray),
+        filename: filename
+    },
+    success: function (response) {
+        let res = response;
 
-                $('#message').html(
-                    `<div class="alert alert-${res.success ? 'success' : 'danger'}">${res.message}</div>`
-                );
+        if (typeof response === 'string') {
+            try {
+                res = JSON.parse(response);
+            } catch (e) {}
+        }
 
-                if (res.success) {
-                    setTimeout(() => location.reload(), 1500);
-                }
-            },
-            error: function () {
-                $('#message').html('<div class="alert alert-danger">An error occurred during upload.</div>');
-            }
-        });
+        // Build dynamic message output
+        let output = '';
+
+        if ('success' in res) {
+            output += `<div><b>success:</b> ${res.success}</div>`;
+        }
+
+        if ('message' in res) {
+            output += `<div><b>message:</b> "${res.message}"</div>`;
+        }
+
+        if (res.errors && Array.isArray(res.errors) && res.errors.length > 0) {
+            output += `<div><b>errors:</b><ul>`;
+            res.errors.forEach(err => {
+                output += `<li>${err}</li>`;
+            });
+            output += `</ul></div>`;
+        }
+
+        // Inject message box
+        $('#message').html(`
+            <div class="alert alert-${res.success ? 'success' : 'danger'}">
+                ${output}
+            </div>
+        `);
+
+        // Close modal after 5 seconds if success
+        if (res.success) {
+            setTimeout(() => {
+                let modal = $('#uploadModal');
+                
+                modal.modal('hide');
+
+                // Remove leftover backdrop properly
+                $('.modal-backdrop').remove();
+                $('body').removeClass('modal-open').css('padding-right', '');
+
+            }, 2000);
+        }
+    },
+    error: function () {
+        $('#message').html('<div class="alert alert-danger">An error occurred during upload.</div>');
+    }
+});
     };
-
     reader.readAsArrayBuffer(file);
 });
 
