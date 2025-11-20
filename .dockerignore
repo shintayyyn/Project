@@ -1,0 +1,49 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.idea
+.vscode
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Environment files
+.env.local
+.env.*.local
+
+# Test files
+tests/
+phpunit.xml
+.phpunit.result.cache
+
+# Node modules
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Development files
+fiveserver.config.js
+docker-compose.yml
+
+# OS files
+Thumbs.db

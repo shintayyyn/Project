@@ -1,0 +1,52 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+/vendor/
+node_modules/
+
+# IDE and editor files
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+/temp_qr/*
+!/temp_qr/.gitkeep
+/uploads/*
+!/uploads/.gitkeep
+tmp/
+temp/
+*.tmp
+
+# PHP
+composer.phar
+.phpunit.result.cache
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Development
+fiveserver.config.js
+
+# Cache
+.cache/
+cache/
+
+# Build files
+dist/
+build/
