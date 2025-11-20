@@ -69,7 +69,7 @@ RUN mkdir -p temp_qr uploads && \
     /var/www/html/uploads
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost/ || exit 1
 
 # Expose port 80
