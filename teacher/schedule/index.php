@@ -54,8 +54,8 @@ LEFT JOIN subjects s ON ss.subject_id = s.subject_id
 LEFT JOIN sections sec ON ss.section_id = sec.section_id
 LEFT JOIN degrees d ON sec.degree_id = d.degree_id
 WHERE ss.teacher_id = ?
+AND ss.is_active = 1
   AND ss.term_id = ?
-  AND ss.is_active = 1
 ORDER BY FIELD(ss.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), ss.start_time
 ";
 
@@ -111,11 +111,12 @@ $plot_query = "
     JOIN subjects s ON ss.subject_code = s.subject_code
     WHERE ss.teacher_id = ?
     AND ss.is_active = 1
+    AND ss.term_id = ?
     ORDER BY FIELD(ss.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), ss.start_time
 ";
 
 $plot_stmt = $conn->prepare($plot_query);
-$plot_stmt->bind_param("i", $teacher_id);
+$plot_stmt->bind_param("ii", $teacher_id, $term_id);
 $plot_stmt->execute();
 $plot_result = $plot_stmt->get_result();
 
