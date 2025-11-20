@@ -66,6 +66,8 @@ if ($is_regular == 2) {
         t.t_id AS teacher_id,
         se.subject_id,
         se.subject_code,
+        ss.start_time,
+        FIELD(ss.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday') AS day_order_field,
         COALESCE(s.subject_description, 'TBA') AS subject_description,
         COALESCE(CONCAT(
             t.t_fname, ' ',
@@ -89,14 +91,13 @@ if ($is_regular == 2) {
     LEFT JOIN subjects s ON s.subject_id = se.subject_id
     LEFT JOIN teachers t ON ss.teacher_id = t.t_id
     LEFT JOIN rooms r ON ss.room_id = r.room_id
-    WHERE se.s_id = ? 
-      AND se.term_id = ? 
-      AND se.enrollment_status = 'Enrolled'
-    ORDER BY FIELD(ss.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), ss.start_time ASC
-";
-
-    $stmt = $conn->prepare($schedule_query);
-    $stmt->bind_param("ii", $student_id, $activeTermId);
+        WHERE se.s_id = ?
+          AND se.term_id = ?
+          AND se.enrollment_status = 'Enrolled'
+        ORDER BY day_order_field, ss.start_time ASC
+    ";
+    
+        $stmt = $conn->prepare($schedule_query);    $stmt->bind_param("ii", $student_id, $activeTermId);
 
 // 🔹 Regular student (is_regular = 1)
 } else {
@@ -111,6 +112,8 @@ if ($is_regular == 2) {
         t.t_id AS teacher_id,
         ss.subject_id,
         ss.subject_code,
+        ss.start_time,
+        FIELD(ss.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday') AS day_order_field,
         COALESCE(s.subject_description, 'TBA') AS subject_description,
         COALESCE(CONCAT(
             t.t_fname, ' ',
@@ -131,7 +134,7 @@ if ($is_regular == 2) {
     WHERE ss.term_id = ?
       AND ss.section_id = ?
       AND ss.is_active = 1
-    ORDER BY FIELD(ss.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), ss.start_time ASC
+    ORDER BY day_order_field, ss.start_time ASC
 ";
 
     $stmt = $conn->prepare($schedule_query);
