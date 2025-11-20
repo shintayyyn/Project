@@ -742,9 +742,9 @@ if (irregularCheckbox) toggleIrregular(irregularCheckbox);
             </div>
           </div>
 
-          <div class="mb-3">
+          <div class="mb-3 d-none">
             <label class="form-label">Degree Program</label>
-            <select class="form-select" name="degree_id" id="edit_degree_id" required disabled>
+            <select class="form-select" name="degree_id" id="edit_degree_id" required>
               <option value="">Select Degree Program</option>
               <?php
               $degrees_query = "SELECT degree_id, degree_code, degree_name FROM degrees ORDER BY degree_name";

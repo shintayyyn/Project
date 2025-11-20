@@ -33,7 +33,7 @@ try {
             ) AS parent_fullname
         FROM students s
         LEFT JOIN (
-    SELECT * FROM students_degrees WHERE s_status = 'active'
+    SELECT * FROM students_degrees WHERE status = 'active'
 ) sd ON s.s_id = sd.s_id
 
         LEFT JOIN students_sections ss ON s.s_id = ss.s_id
