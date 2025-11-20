@@ -75,5 +75,12 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
 # Expose port 80
 EXPOSE 80
 
+# Make environment variables available to PHP
+RUN echo "PassEnv DB_HOST" >> /etc/apache2/conf-enabled/environment.conf && \
+    echo "PassEnv DB_USER" >> /etc/apache2/conf-enabled/environment.conf && \
+    echo "PassEnv DB_PASS" >> /etc/apache2/conf-enabled/environment.conf && \
+    echo "PassEnv DB_NAME" >> /etc/apache2/conf-enabled/environment.conf && \
+    echo "PassEnv DB_PORT" >> /etc/apache2/conf-enabled/environment.conf
+
 # Start Apache
 CMD ["apache2-foreground"]
