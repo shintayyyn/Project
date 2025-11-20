@@ -245,15 +245,17 @@ try {
             throw new Exception('Parent email is already in use.');
         }
         $check_parent_email->close();
+        
+        $p_password = strtolower(substr($p_fname, 0, 1)) . strtolower(str_replace(' ', '', $p_lname)) . date("mdY", strtotime($p_bdate));
 
         $stmt = $conn->prepare("
             INSERT INTO parents 
-            (p_fname, p_lname, p_mname, p_suffix, p_gender, p_bdate, p_cnum, p_address, p_email, p_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (p_fname, p_lname, p_mname, p_suffix, p_gender, p_bdate, p_cnum, p_address, p_email, p_status, p_password)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->bind_param("ssssssssss",
+        $stmt->bind_param("sssssssssss",
             $p_fname, $p_lname, $p_mname, $p_suffix,
-            $p_gender, $p_bdate, $p_cnum, $p_address, $p_email, $p_status
+            $p_gender, $p_bdate, $p_cnum, $p_address, $p_email, $p_status, $p_password
         );
         $stmt->execute();
         $p_id = $stmt->insert_id;
