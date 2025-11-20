@@ -29,47 +29,47 @@ $stmt = $conn->prepare("UPDATE absent_requests SET status = ? WHERE id = ?");
 $stmt->bind_param("si", $status, $id);
 $stmt->execute();
 
-// If approved, insert into attendance table as Excused
+// If approved, insert into attendance table as Excuse
 if ($action === 'approve') {
     $stmt2 = $conn->prepare("
-        INSERT INTO attendance (s_id, subject_code, section_code, time_in, time_out, status, t_id, user_type)
+        INSERT INTO attendance (s_id, subject_id, subject_code, section_code, time_in, time_out, status, term_id)
         SELECT 
             ar.s_id,
+            ss.subject_id,
             ss.subject_code,
             sec.section_code,
             CONCAT(ar.absent_date, ' 00:00:00') AS time_in,
             CONCAT(ar.absent_date, ' 00:00:00') AS time_out,
-            'Excused',
-            ?,
-            'teacher'
+            'Excuse',
+            ss.term_id
         FROM absent_requests ar
         JOIN sections_schedules ss ON ar.ss_id = ss.ss_id
         JOIN sections sec ON ss.section_id = sec.section_id
         WHERE ar.id = ? AND ss.teacher_id = ?
     ");
-    $stmt2->bind_param("iii", $t_id, $id, $t_id);
+    $stmt2->bind_param("ii", $id, $t_id);
     $stmt2->execute();
 }
 
 // If rejected, insert into attendance table as Absent
 if ($action === 'reject') {
     $stmt3 = $conn->prepare("
-        INSERT INTO attendance (s_id, subject_code, section_code, time_in, time_out, status, t_id, user_type)
+        INSERT INTO attendance (s_id, subject_id, subject_code, section_code, time_in, time_out, status, term_id)
         SELECT 
             ar.s_id,
+            ss.subject_id,
             ss.subject_code,
             sec.section_code,
             CONCAT(ar.absent_date, ' 00:00:00') AS time_in,
             CONCAT(ar.absent_date, ' 00:00:00') AS time_out,
             'Absent',
-            ?,
-            'teacher'
+            ss.term_id
         FROM absent_requests ar
         JOIN sections_schedules ss ON ar.ss_id = ss.ss_id
         JOIN sections sec ON ss.section_id = sec.section_id
         WHERE ar.id = ? AND ss.teacher_id = ?
     ");
-    $stmt3->bind_param("iii", $t_id, $id, $t_id);
+    $stmt3->bind_param("ii", $id, $t_id);
     $stmt3->execute();
 }
 
