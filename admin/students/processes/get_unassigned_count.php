@@ -13,12 +13,20 @@ $current_term = $conn->query("SELECT term_id FROM academic_terms WHERE is_active
 $term_id = $current_term['term_id'] ?? 0;
 
 $stmt = $conn->prepare("
-    SELECT COUNT(*) AS unassigned_count
+    SELECT COUNT(DISTINCT s.s_id) AS unassigned_count
     FROM students s
-    LEFT JOIN students_sections ss ON s.s_id = ss.s_id AND ss.term_id = ?
-    WHERE ss.section_id IS NULL AND s.term_id = ?
+    LEFT JOIN students_sections ss
+           ON s.s_id = ss.s_id
+          AND ss.term_id = ?
+    WHERE ss.section_id IS NULL
+      AND s.is_regular = 1
+      AND s.s_status = 'active'
+      AND (
+            s.enrollment_status LIKE 'Promoted%' 
+            OR s.enrollment_status = 'Not yet Enrolled'
+          )
 ");
-$stmt->bind_param("ii", $term_id, $term_id);
+$stmt->bind_param("i", $term_id);
 $stmt->execute();
 $result = $stmt->get_result()->fetch_assoc();
 

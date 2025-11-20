@@ -1,79 +1,174 @@
 <?php
 require_once __DIR__ . '/../../includes/db.php';
+
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+if (!isset($_SESSION['user_id'])) {
+    die('Unauthorized access.');
+}
+
 $student_id = $_SESSION['user_id'];
 
-// Only process the query if it's not an AJAX request
-if (!isset($_SERVER['HTTP_X_REQUESTED_WITH'])) {
-    error_reporting(E_ALL);
-    ini_set('display_errors', 1);
+// ✅ Initialize schedules per day
+$schedules = [
+    'Monday' => [], 'Tuesday' => [], 'Wednesday' => [],
+    'Thursday' => [], 'Friday' => [], 'Saturday' => [], 'Sunday' => [],'TBA' => []
+];
 
-    // Get student information
-    $student_id = $_SESSION['user_id'];
+// 🧠 Get student's regularity status
+$status_query = "SELECT is_regular FROM students WHERE s_id = ?";
+$stmt = $conn->prepare($status_query);
+$stmt->bind_param("i", $student_id);
+$stmt->execute();
+$is_regular = ($stmt->get_result()->fetch_assoc()['is_regular'] ?? 1);
+$stmt->close();
 
-    // Get current semester and academic year from sections_schedules
-    $period_query = "SELECT DISTINCT semester, academic_year 
-                    FROM sections_schedules ss
-                    JOIN students_sections sts ON ss.section_id = sts.section_id
-                    WHERE sts.s_id = ?
-                    ORDER BY academic_year DESC, FIELD(semester, 'First', 'Second', 'Summer') DESC
-                    LIMIT 1";
-    $period_stmt = $conn->prepare($period_query);
-    $period_stmt->bind_param("i", $student_id);
-    $period_stmt->execute();
-    $period_result = $period_stmt->get_result();
-    $period = $period_result->fetch_assoc();
+// 🧭 Get student's section info (for regulars)
+$section_query = "
+    SELECT sec.section_id, sec.section_code
+    FROM students_sections ss
+    JOIN sections sec ON sec.section_id = ss.section_id
+    WHERE ss.s_id = ?
+";
+$stmt = $conn->prepare($section_query);
+$stmt->bind_param("i", $student_id);
+$stmt->execute();
+$section_info = $stmt->get_result()->fetch_assoc();
+$section_id = $section_info['section_id'] ?? null;
+$stmt->close();
 
-    $current_semester = $period['semester'] ?? 'First';
-    $current_academic_year = $period['academic_year'] ?? date('Y') . '-' . (date('Y') + 1);
+// 🧠 Get active term
+$period_query = "
+    SELECT 
+        at.term_id,
+        at.semester,
+        CONCAT(ay.year_start, '-', ay.year_end) AS academic_year
+    FROM academic_terms at
+    INNER JOIN academic_years ay ON ay.ay_id = at.ay_id
+    WHERE at.is_active = 1
+    ORDER BY ay.year_start DESC, FIELD(at.semester, 'First', 'Second', 'Summer') DESC
+    LIMIT 1
+";
+$period_result = $conn->query($period_query);
+$period = $period_result ? $period_result->fetch_assoc() : null;
 
-    // Get all schedules
- $schedule_query = "SELECT 
-    ss.ss_id,
-    ss.subject_code,
-    s.subject_description,
-    t.t_id AS teacher_id,
-    CONCAT(t.t_fname, ' ', t.t_lname) as teacher_name,
-    ss.day_of_week,
-    TIME_FORMAT(ss.start_time, '%h:%i %p') as start_time,
-    TIME_FORMAT(ss.end_time, '%h:%i %p') as end_time,
-    r.room_number,
-    ss.status,
-    ss.description
-FROM students_sections sts
-JOIN sections_schedules ss ON sts.section_id = ss.section_id
-JOIN subjects s ON ss.subject_code = s.subject_code
-JOIN subjects_teachers st ON ss.subject_code = st.subject_code
-JOIN teachers t ON st.t_id = t.t_id
-LEFT JOIN rooms r ON ss.room_id = r.room_id
-WHERE sts.s_id = ?
-ORDER BY FIELD(ss.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'),
-         ss.start_time ASC";
+$activeTermId = $period['term_id'] ?? null;
+if (!$activeTermId) {
+    echo json_encode(['error' => 'No active term found']);
+    exit;
+}
 
-
+// 🔹 Irregular student (is_regular = 2)
+if ($is_regular == 2) {
+   $schedule_query = "
+    SELECT DISTINCT
+        ss.ss_id,
+        t.t_id AS teacher_id,
+        se.subject_id,
+        se.subject_code,
+        COALESCE(s.subject_description, 'TBA') AS subject_description,
+        COALESCE(CONCAT(
+            t.t_fname, ' ',
+            IF(t.t_mname IS NOT NULL AND t.t_mname != '', CONCAT(LEFT(t.t_mname,1), '. '), ''),
+            t.t_lname,
+            IF(t.t_suffix IS NOT NULL AND t.t_suffix != '', CONCAT(' ', t.t_suffix), '')
+        ), 'TBA') AS teacher_name,
+        COALESCE(ss.day_of_week, 'TBA') AS day_of_week,
+        COALESCE(TIME_FORMAT(ss.start_time, '%h:%i %p'), 'TBA') AS start_time,
+        COALESCE(TIME_FORMAT(ss.end_time, '%h:%i %p'), 'TBA') AS end_time,
+        COALESCE(r.room_number, 'TBA') AS room_number,
+        COALESCE(ss.status, 'TBA') AS status,
+        COALESCE(ss.description, 'TBA') AS description
+    FROM subject_enrollments se
+    LEFT JOIN sections_schedules ss 
+           ON ss.subject_id = se.subject_id 
+          AND ss.subject_code = se.subject_code
+          AND ss.section_code = se.section_code
+          AND ss.term_id = se.term_id
+    LEFT JOIN subjects s ON s.subject_id = se.subject_id
+    LEFT JOIN teachers t ON ss.teacher_id = t.t_id
+    LEFT JOIN rooms r ON ss.room_id = r.room_id
+    WHERE se.s_id = ? 
+      AND se.term_id = ? 
+      AND se.enrollment_status = 'Enrolled'
+    ORDER BY FIELD(ss.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), ss.start_time ASC
+";
 
     $stmt = $conn->prepare($schedule_query);
-    $stmt->bind_param("i", $student_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt->bind_param("ii", $student_id, $activeTermId);
 
-    // Organize schedules by day
-    $schedules = [
-        'Monday' => [],
-        'Tuesday' => [],
-        'Wednesday' => [],
-        'Thursday' => [],
-        'Friday' => [],
-        'Saturday' => []
-    ];
-
-    while ($row = $result->fetch_assoc()) {
-        $schedules[$row['day_of_week']][] = $row;
+// 🔹 Regular student (is_regular = 1)
+} else {
+    if (!$section_id) {
+        echo json_encode(['error' => 'Section not found for regular student']);
+        exit;
     }
 
-    $today = date('l');
+  $schedule_query = "
+    SELECT DISTINCT
+        ss.ss_id,
+        t.t_id AS teacher_id,
+        ss.subject_id,
+        ss.subject_code,
+        COALESCE(s.subject_description, 'TBA') AS subject_description,
+        COALESCE(CONCAT(
+            t.t_fname, ' ',
+            IF(t.t_mname IS NOT NULL AND t.t_mname != '', CONCAT(LEFT(t.t_mname,1), '. '), ''),
+            t.t_lname,
+            IF(t.t_suffix IS NOT NULL AND t.t_suffix != '', CONCAT(' ', t.t_suffix), '')
+        ), 'TBA') AS teacher_name,
+        COALESCE(ss.day_of_week, 'TBA') AS day_of_week,
+        COALESCE(TIME_FORMAT(ss.start_time, '%h:%i %p'), 'TBA') AS start_time,
+        COALESCE(TIME_FORMAT(ss.end_time, '%h:%i %p'), 'TBA') AS end_time,
+        COALESCE(r.room_number, 'TBA') AS room_number,
+        COALESCE(ss.status, 'TBA') AS status,
+        COALESCE(ss.description, 'TBA') AS description
+    FROM sections_schedules ss
+    LEFT JOIN subjects s ON s.subject_id = ss.subject_id
+    LEFT JOIN teachers t ON ss.teacher_id = t.t_id
+    LEFT JOIN rooms r ON ss.room_id = r.room_id
+    WHERE ss.term_id = ?
+      AND ss.section_id = ?
+    ORDER BY FIELD(ss.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), ss.start_time ASC
+";
+
+    $stmt = $conn->prepare($schedule_query);
+    $stmt->bind_param("ii", $activeTermId, $section_id);
 }
+
+$stmt->execute();
+$result = $stmt->get_result();
+$stmt->close();
+
+// 🗓️ Group schedules by day (with TBA fallback)
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $day = $row['day_of_week'] ?? 'TBA';
+        if (!isset($schedules[$day])) $schedules[$day] = [];
+
+        $schedules[$day][] = [
+            'ss_id' => $row['ss_id'] ?? 0, // required for attachments
+            'subject_id' => $row['subject_id'] ?? 'TBA',
+            'subject_code' => $row['subject_code'] ?? 'TBA',
+            'subject_description' => $row['subject_description'] ?? 'TBA',
+            'teacher_name' => $row['teacher_name'] ?? 'TBA',
+            'teacher_id' => $row['teacher_id'] ?? 0, // required for attachments
+            'start_time' => $row['start_time'] ?? 'TBA',
+            'end_time' => $row['end_time'] ?? 'TBA',
+            'room_number' => $row['room_number'] ?? 'TBA',
+            'status' => $row['status'] ?? 'Available',
+            'description' => $row['description'] ?? ''
+        ];
+    }
+}
+
+
+$today = date('l');
 ?>
 
+<!-- Bootstrap CSS -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500&display=swap" rel="stylesheet">
 
 <main class="py-4">
     <div class="container-fluid px-4">
@@ -84,10 +179,13 @@ ORDER BY FIELD(ss.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fr
                         <i class="bi bi-calendar3-week me-2"></i>My Schedule
                     </h1>
                     <div class="d-flex align-items-center">
-                        <div class="bg-white shadow-sm rounded-pill px-4 py-2 text-muted small">
-                            <i class="bi bi-clock-history me-1"></i>
-                            Last Updated: <span id="last-updated">Just now</span>
-                        </div>
+                       <div class="bg-white shadow-sm rounded-pill px-4 py-2 text-muted small d-flex align-items-center">
+    <i class="bi bi-clock-history me-1"></i>
+    Last Updated: <span id="last-updated" class="ms-1 fw-semibold text-dark">
+        <?= htmlspecialchars($_SESSION['last_updated']); ?>
+    </span>
+</div>
+
                     </div>
                 </div>
             </div>
@@ -100,99 +198,149 @@ ORDER BY FIELD(ss.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fr
                             <div class="schedule-header rounded-top">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
-                                        <h5 class="card-title fw-semibold mb-2 text-white">Schedule Overview</h5>
-                                        <p class="text-white-50 mb-0 small">Your current class schedule</p>
-                                    </div>
-                                    <div class="schedule-icon">
-                                        <i class="bi bi-calendar3-week fs-1 opacity-25"></i>
-                                    </div>
+                                       <div class="d-flex align-items-center gap-3">
+    <span><i class="bi bi-calendar3-week fs-1 opacity-25"></i></span>
+    <h5 class="card-title fw-semibold mb-0 text-white">Schedule Overview</h5>
+</div>
+
+                                         <p class="text-white-50 mb-0 small">Your current class schedule</p>
+                                      <div class="fst-italic text-white-50 small mt-2">
+                                            <span class="fw-semibold text-white me-2">LEGEND:</span>
+                                            <div class="d-flex flex-wrap align-items-center gap-3 mt-1">
+                                                <div class="d-flex align-items-center gap-2">
+                                                     <span class="btn border text-success bg-success rounded-pill px-3 py-2"></span>
+                                                    <span>Available</span>
+                                                </div>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <span class="btn border  text-primary bg-primary rounded-pill px-3 py-2"></span>
+                                                    <span>Asynchronous</span>
+                                                </div>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <span class="btn border  text-danger bg-danger rounded-pill px-3 py-2"></span>
+                                                    <span>Not Available / Unavailable (toggle the first column to see attachment)</span>
+                                                </div>
+                                            </div>
+                                            NOTE : Click the first child row to toggle/ see more.
+                                        </div>
+
+                                        </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="card-body p-0 table-responsive">
+                        <div class="card-body py-3 px-2 table-responsive">
                             <?php if (array_sum(array_map('count', $schedules)) > 0): ?>
-                                    <table id="scheduleTable" class="table table-striped table-bordered nowrap" style="width:100%">
-                                        <thead>
-                                            <tr>
-                                                <th class="bg-light px-4 py-3" style="min-width: 200px">Day & Time</th>
-                                                <th class="bg-light px-3 py-3" style="min-width: 250px">Subject</th>
-                                                <th class="bg-light px-3 py-3" style="min-width: 200px">Teacher</th>
-                                                <th class="bg-light px-3 py-3 text-center" style="min-width: 120px">Room</th>
-                                                <th class="bg-light px-3 py-3 text-center" style="min-width: 120px">Remarks</th>
-                                                <th class="bg-light px-3 py-3 text-center" style="min-width: 120px">Actions</th>
-                                            </tr>
-                                        </thead>
-                                       <tbody>
-                                        <?php foreach ($schedules as $day => $day_schedules): 
-                                            if (empty($day_schedules)) continue;
-                                            foreach ($day_schedules as $schedule): 
-
-                                                // Merge status and description for Remarks
-                                                $remarks = '';
-                                                if (!empty($schedule['status'])) $remarks .= htmlspecialchars($schedule['status']);
-                                                if (!empty($schedule['description'])) $remarks .= ($remarks ? ' - ' : '') . htmlspecialchars($schedule['description']);
-
-                                                // Default remarks if empty
-                                                if (empty($remarks)) {
-                                                    $remarks = '<span class="badge bg-success">Available</span> - Ready for Class';
-                                                }
-
-                                                $stmt = $conn->prepare("SELECT file_name, id 
-                                    FROM attachment_files 
-                                    WHERE ss_id = ? 
-                                    AND uploaded_by_id = ? 
-                                    AND uploaded_by_type = 'teacher' 
-                                    LIMIT 1");
-                                $stmt->bind_param("ii", $schedule['ss_id'], $schedule['teacher_id']);
-                                $stmt->execute();
-                                $attachment = $stmt->get_result()->fetch_assoc();
-
-                                if (!$attachment) {
-                                    // Debug output
-                                    error_log("No attachment for SS_ID={$schedule['ss_id']} Teacher_ID={$schedule['teacher_id']}");
-                                }
-                                $stmt->close();
-
-                                        ?>
+                                <table id="scheduleTable" class="table display nowrap">
+                                    <thead class="card-header">
                                         <tr>
-                                            <td class="px-4">
-                                                <div class="d-flex gap-3 align-items-center">
-                                                    <span class="badge <?php echo $day === $today ? 'bg-primary' : 'bg-secondary bg-opacity-10 text-secondary'; ?> px-3 py-2">
-                                                        <?php echo $day; ?>
-                                                    </span>
-                                                    <div class="text-muted small">
-                                                        <?php echo $schedule['start_time'] . ' - ' . $schedule['end_time']; ?>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td class="px-3">
-                                                <div class="d-flex flex-column">
-                                                    <div class="fw-medium text-primary mb-1"><?php echo htmlspecialchars($schedule['subject_code']); ?></div>
-                                                    <div class="text-muted small"><?php echo htmlspecialchars($schedule['subject_description']); ?></div>
-                                                </div>
-                                            </td>
-                                            <td class="px-3">
-                                                <div class="d-flex align-items-center">
-                                                    <div class="bg-primary bg-opacity-10 rounded-circle p-2 me-3">
-                                                        <i class="bi bi-person text-primary small"></i>
-                                                    </div>
-                                                    <span class="text-body"><?php echo htmlspecialchars($schedule['teacher_name']); ?></span>
-                                                </div>
-                                            </td>
-                                            <td class="px-3 text-center">
-                                                <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2">
-                                                    <?php echo $schedule['room_number'] ? htmlspecialchars($schedule['room_number']) : 'TBA'; ?>
-                                                </span>
-                                            </td>
-                                            <td class="px-3 text-center">
-                                                <?php echo $remarks; ?>
-                                            </td>
-                                            <td class="px-3 text-center">
-                                               <?php if ($attachment): ?>
-    <button class="btn btn-sm btn-outline-primary view-attachment-btn" 
-            data-attachment-id="<?= $attachment['id'] ?>" 
+                                            <th>Day & Time</th>
+                                            <th>Subject</th>
+                                            <th>Teacher</th>
+                                            <th>Room</th>
+                                            <th>Remarks</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                 <tbody>
+        <?php 
+        foreach ($schedules as $day => $day_schedules):
+            if (empty($day_schedules)) continue;
+            foreach ($day_schedules as $schedule):
+
+        // 🔹 Determine status and description
+        $currentStatus = !empty($schedule['status']) ? trim($schedule['status']) : '';
+        $statusDescription = !empty($schedule['description']) ? trim($schedule['description']) : '';
+
+        // 🔹 Fetch attachment for this schedule
+        $stmt = $conn->prepare("
+            SELECT file_name, id, updated_at 
+            FROM attachment_files 
+            WHERE ss_id = ? 
+            AND uploaded_by_id = ? 
+            AND uploaded_by_type = 'teacher' 
+            ORDER BY updated_at DESC
+            LIMIT 1
+        ");
+        $stmt->bind_param("ii", $schedule['ss_id'], $schedule['teacher_id']);
+        $stmt->execute();
+        $attachment = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+      $daysAgo = 6;
+$thresholdDate = strtotime("-$daysAgo days");
+$latestUpdate = $attachment ? strtotime($attachment['updated_at']) : null;
+
+// 🔹 Default status/description if empty or outdated
+if (empty($currentStatus) || !$latestUpdate || $latestUpdate < $thresholdDate) {
+    $currentStatus = 'Available';
+    $statusDescription = 'Ready for class';
+}
+
+
+
+        $remarks = htmlspecialchars($currentStatus) . ' - ' . htmlspecialchars($statusDescription);
+
+        // 🔹 Determine badge color for schedule day/time
+        $statusColor = 'success';
+        $badgeClass = 'bg-outline-success text-success';
+        $textColor = 'text-success';
+
+        if (stripos($currentStatus, 'not available') !== false) {
+            $statusColor = 'danger';
+            $badgeClass = 'bg-outline-danger text-danger';
+            $textColor = 'text-danger';
+        } elseif (stripos($currentStatus, 'async') !== false || stripos($currentStatus, 'asynchronous') !== false) {
+            $statusColor = 'primary';
+            $badgeClass = 'bg-outline-primary text-primary';
+            $textColor = 'text-primary';
+        } elseif (stripos($currentStatus, 'unavailable') !== false) {
+            $statusColor = 'warning';
+            $badgeClass = 'bg-outline-warning text-warning';
+            $textColor = 'text-warning';
+        }
+
+        if ($day === $today) {
+            $badgeClass = "bg-$statusColor text-white";
+            $textColor = 'text-white';
+        }
+?>
+    <tr>
+        <td>
+            <div class="d-flex gap-3 align-items-center">
+                <span class="badge <?php echo $badgeClass; ?> px-3 py-2 d-inline-flex align-items-center">
+                    <?php echo $day; ?>
+                </span>
+                <div class="small d-flex align-items-center gap-2 <?php echo $textColor !== 'text-white' ? 'text-muted' : ''; ?>">
+                    <span class="status-dot bg-<?php echo $statusColor; ?>"></span>
+                    <?php echo $schedule['start_time'] . ' - ' . $schedule['end_time']; ?>
+                </div>
+            </div>
+        </td>
+        <td class="px-3">
+            <div class="d-flex flex-column">
+                <div class="fw-medium text-primary mb-1"><?php echo htmlspecialchars($schedule['subject_code']); ?></div>
+                <div class="text-muted small"><?php echo htmlspecialchars($schedule['subject_description']); ?></div>
+            </div>
+        </td>
+        <td class="px-3">
+            <div class="d-flex align-items-center">
+                <div class="bg-primary bg-opacity-10 rounded-circle p-2 me-3">
+                    <i class="bi bi-person text-primary small"></i>
+                </div>
+                <span class="text-body"><?php echo htmlspecialchars($schedule['teacher_name']); ?></span>
+            </div>
+        </td>
+        <td class="px-3 text-center">
+            <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2">
+                <?php echo $schedule['room_number'] ? htmlspecialchars($schedule['room_number']) : 'TBA'; ?>
+            </span>
+        </td>
+        <td class="px-3 text-center"><?php echo $remarks; ?></td>
+        <td class="px-3 text-center">
+           <?php if ($attachment && $latestUpdate >= $thresholdDate): ?>
+    <button class="btn btn-sm btn-outline-primary view-attachment-btn"
+            data-attachment-id="<?= $attachment['id'] ?>"
             data-uploaded-by="<?= $schedule['teacher_id'] ?>"
-            data-bs-toggle="modal" 
+            data-bs-toggle="modal"
             data-bs-target="#attachmentModal">
         <i class="bi bi-eye"></i> View
     </button>
@@ -200,13 +348,13 @@ ORDER BY FIELD(ss.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fr
     <span class="text-muted">No attachment provided</span>
 <?php endif; ?>
 
+        </td>
+    </tr>
+<?php endforeach; endforeach; ?>
+</tbody>
 
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
+
+                                </table>
                             <?php else: ?>
                                 <div class="text-center py-5">
                                     <div class="bg-light rounded-circle mx-auto mb-4 d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
@@ -228,19 +376,49 @@ ORDER BY FIELD(ss.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fr
 <div class="modal fade" id="attachmentModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
+      <div class="modal-header card-header text-white">
         <h5 class="modal-title">Attachment Preview</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn btn-warning" data-bs-dismiss="modal" aria-label="Close">Close</button>
       </div>
-      <div class="modal-body" id="attachmentModalBody">
-        Loading...
-      </div>
+      <div class="modal-body" id="attachmentModalBody">Loading...</div>
     </div>
   </div>
 </div>
 
-
 <style>
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.bg-outline-primary {
+    color: #0d6efd;
+    border: 1px solid #0d6efd;
+    background-color: transparent;
+}
+.bg-outline-success {
+    color: #198754;
+    border: 1px solid #198754;
+    background-color: transparent;
+}
+.bg-outline-danger {
+    color: #dc3545;
+    border: 1px solid #dc3545;
+    background-color: transparent;
+}
+
+     :root {
+            --primary: #033A70;
+            --secondary: #033A70;
+            --tertiary: #FFCB05;
+            --quaternary: #D0EEFC;
+            --background: #EDF8FD;
+            --sidebar-width: 250px;
+            --card-border-radius: 0.75rem;
+            --transition-speed: 0.3s;
+        }
 .table > :not(caption) > * > * {
     padding: 1.25rem 0.75rem;
     border-bottom-color: #f0f0f0;
@@ -250,7 +428,7 @@ ORDER BY FIELD(ss.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fr
     font-size: 0.875rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #555;
+    color: white;
 }
 .badge {
     font-weight: 500;
@@ -261,16 +439,10 @@ ORDER BY FIELD(ss.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fr
     overflow: hidden;
     margin-bottom: 1rem;
 }
-.card-header {
-    border: none;
-}
 .schedule-header {
-    background: linear-gradient(145deg, #3d52a0 0%, #7091E6 100%);
+    background: var(--primary);
     padding: 1.5rem;
     color: white;
-}
-.schedule-header .card-title {
-    color: white !important;
 }
 .schedule-icon {
     position: absolute;
@@ -278,39 +450,53 @@ ORDER BY FIELD(ss.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fr
     top: 50%;
     transform: translateY(-50%);
 }
-tbody tr {
-    transition: all 0.2s ease;
-}
 tbody tr:hover {
     background-color: #f8f9fa;
 }
 
+/* Responsive Tweaks */
 @media (max-width: 768px) {
-    .schedule-header {
-        padding: 1.5rem;
+    .schedule-header { padding: 1.5rem; }
+    .schedule-icon { right: 1.5rem; }
+    .dataTables_wrapper .dataTables_filter {
+        float: none !important;
+        text-align: left !important;
+        margin-bottom: 1rem;
     }
-    .schedule-icon {
-        right: 1.5rem;
-    }
+}
+
+/* Expand icon styling */
+table.dataTable.dtr-inline.collapsed > tbody > tr > td:first-child::before {
+    background-color: #3d52a0;
+    border: none;
 }
 </style>
 
-<script>// Initialize DataTable with full responsiveness and horizontal scrolling
-    var table = $('#scheduleTable').DataTable({
-        responsive: {
-            details: {
-                type: 'column',
-                target: 'tr'
-            }
-        },
-        scrollX: true, // enables horizontal scroll if needed
-        columnDefs: [
-            { className: 'dtr-control', targets: 0 } // First column triggers responsive child row
-        ],
-        pageLength: 10,
-        lengthMenu: [5, 10, 25, 50],
-        order: [[6, "desc"]] // Order by Date Added descending
-    });
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
+
+<script>
+function initScheduleTable() {
+
+    const table = $('#scheduleTable').DataTable({
+       responsive: { details: { type: 'column', 
+        target: 0 } }, 
+        columnDefs: [ { 
+            className: 'dtr-control custom-plus', 
+            targets: 0 } ], 
+            scrollX: false, // no horizontal scroll 
+       scrollY: '50vh', // vertical scroll height 
+       responsive: true, 
+       ordering: true, // allow sorting 
+       scrollCollapse: true, 
+       paging: true, 
+       searching: true, 
+       info: true, 
+       autoWidth: false
+
+    }
+    )}
 
 let lastUpdate = <?php echo time(); ?>;
 
@@ -322,19 +508,20 @@ function loadSchedule() {
         dataType: 'json',
         cache: false,
         success: function(response) {
-            console.log('Load response:', response);
             if (response.html) {
+                if ($.fn.DataTable.isDataTable('#scheduleTable')) {
+                    $('#scheduleTable').DataTable().destroy();
+                }
                 $('#schedule-container').html(response.html);
+                initScheduleTable();
             }
             if (response.timestamp) {
                 lastUpdate = parseFloat(response.timestamp);
                 $('#last-updated').text(new Date().toLocaleTimeString());
             }
         },
-        error: function(xhr, status, error) {
-            console.error('Load error:', error, xhr.status, xhr.responseText);
-            console.log('Current URL:', window.location.href);
-            console.log('Attempted URL:', new URL('schedule/load_schedule.php', window.location.href).href);
+        complete: function() {
+            setTimeout(checkForUpdates, 5000);
         }
     });
 }
@@ -347,53 +534,37 @@ function checkForUpdates() {
         dataType: 'json',
         cache: false,
         success: function(response) {
-            console.log('Check response:', response);
             if (response.hasUpdates) {
-                console.log('Updates found, reloading schedule');
                 loadSchedule();
             } else if (response.timestamp) {
                 lastUpdate = parseFloat(response.timestamp);
             }
         },
-        error: function(xhr, status, error) {
-            console.error('Check error:', error, xhr.status, xhr.responseText);
-            console.log('Current URL:', window.location.href);
-            console.log('Attempted URL:', new URL('schedule/check_updates.php', window.location.href).href);
-        },
         complete: function() {
-            setTimeout(checkForUpdates, 5000);
+            setTimeout(checkForUpdates, 10);
         }
     });
 }
 
 $(document).ready(function() {
-    loadSchedule();
+    initScheduleTable();
     setTimeout(checkForUpdates, 5000);
 });
 
 $(document).on('click', '.view-attachment-btn', function() {
     var attachmentId = $(this).data('attachment-id');
     var uploadedBy = $(this).data('uploaded-by');
-
     $('#attachmentModalBody').html('Loading...');
-
     $.ajax({
-    url: 'schedule/view_attachment.php',
-    method: 'GET',
-    data: { id: attachmentId, uploaded_by: uploadedBy },
-    success: function(data) {
-        console.log('Attachment data:', data); // <-- see what is returned
-        $('#attachmentModalBody').html(data);
-    },
-    error: function(xhr, status, error) {
-        console.error('Failed to load attachment:', error, xhr.responseText);
-        $('#attachmentModalBody').html('Failed to load attachment.');
-    }
+        url: 'schedule/view_attachment.php',
+        method: 'GET',
+        data: { id: attachmentId, uploaded_by: uploadedBy },
+        success: function(data) {
+            $('#attachmentModalBody').html(data);
+        },
+        error: function(xhr, status, error) {
+            $('#attachmentModalBody').html('Failed to load attachment.');
+        }
+    });
 });
-
-});
-
-
-
-
 </script>

@@ -1,43 +1,55 @@
 <?php
 require_once __DIR__ . '/../../includes/db.php';
 
-if (!isset($_GET['id'], $_GET['ss_id'], $_GET['uploaded_by_id'])) {
-    echo "Invalid request.";
-    exit;
-}
+$id = $_GET['id'] ?? 0;
+$uploaded_by = $_GET['uploaded_by'] ?? 0;
 
-$attachment_id = (int) $_GET['id'];
-$ss_id = (int) $_GET['ss_id'];
-$uploaded_by = (int) $_GET['uploaded_by'];
-
-// Fetch attachment using all three
-$stmt = $conn->prepare("
-    SELECT file_name, file_type, file_data 
-    FROM attachment_files 
-    WHERE id = ? AND ss_id = ? AND uploaded_by_id = ? AND uploaded_by_type = 'teacher'
-    LIMIT 1
-");
-$stmt->bind_param("iii", $attachment_id, $ss_id, $uploaded_by);
+$stmt = $conn->prepare("SELECT file_name FROM attachment_files WHERE id = ? AND uploaded_by_id = ?");
+$stmt->bind_param("ii", $id, $uploaded_by);
 $stmt->execute();
-$result = $stmt->get_result();
-$attachment = $result->fetch_assoc();
+$file = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
-if (!$attachment) {
-    echo "Attachment not found.";
+if (!$file) {
+    echo "<p class='text-muted'>No attachment provided.</p>";
     exit;
 }
 
-$file_type = $attachment['file_type'];
-$file_name = $attachment['file_name'];
-$file_data = $attachment['file_data'];
+$filename = htmlspecialchars($file['file_name']);
+$path = "../uploads/remarks/" . $filename;
+$ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 
-if (strpos($file_type, 'image') !== false) {
-    echo '<img src="data:'.$file_type.';base64,'.base64_encode($file_data).'" class="img-fluid" />';
-} elseif (strpos($file_type, 'pdf') !== false) {
-    echo '<iframe src="data:'.$file_type.';base64,'.base64_encode($file_data).'" style="width:100%;height:500px;" frameborder="0"></iframe>';
-} else {
-    echo '<p><strong>'.$file_name.'</strong></p>';
-    echo '<a href="data:'.$file_type.';base64,'.base64_encode($file_data).'" download="'.$file_name.'" class="btn btn-primary">Download File</a>';
+/* ✅ IMAGE PREVIEW (mobile-friendly) */
+if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+    echo "
+        <div style='width:100%; max-height:70vh; overflow:auto; text-align:center;'>
+            <img src='{$path}' 
+                 style='max-width:100%; height:auto; object-fit:contain;' 
+                 class='rounded shadow-sm'>
+        </div>
+    ";
+    exit;
 }
+
+/* ✅ PDF PREVIEW  */
+if ($ext === 'pdf') {
+
+    echo "
+        <div class='text-center p-3'>
+            <i class='bi bi-file-earmark-pdf' style='font-size: 60px; color:#d9534f;'></i>
+            <h5 class='mt-3'>PDF File</h5>
+            <p class='text-muted'>Your device does not allow PDF to be viewed inside this window.</p>
+            
+            <a href='{$path}' 
+               class='btn btn-primary mt-2' 
+               target='_blank'>
+               Open PDF
+            </a>
+        </div>
+    ";
+    exit;
+}
+
+/* Unsupported file */
+echo "<p class='text-muted'>File format not supported for preview.</p>";
 ?>

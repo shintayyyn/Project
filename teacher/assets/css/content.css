@@ -9,6 +9,13 @@
     --card-border-radius: 0.75rem;
     --transition-speed: 0.3s;
 }
+
+* {
+    scrollbar-width: none !important;  /* Firefox */
+}
+*::-webkit-scrollbar {
+    display: none !important;  /* Chrome, Safari, Edge */
+}
 /* Override Bootstrap button styles */
 .btn-primary {
     color: var(--primary) !important;

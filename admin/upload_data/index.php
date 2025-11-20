@@ -127,8 +127,8 @@ while ($row = $stmt->fetch_assoc()) {
             <span class="text-danger fw-semibold">Note:</span>
             The <code>is_solo, is_regular, and year_level</code> columns are numeric. Passwords will be generated automatically. <br>
             <strong>Instructions:</strong><br>
-            - <code>is_solo</code>: 1 = Yes, 2 = No<br>
-            - <code>is_regular</code>: 1 = Yes, 2 = No (same as is_solo)<br>
+            - <code>is_solo</code>: 2 = Yes, 1 = No<br>
+            - <code>is_regular</code>: 2 = Yes, 1 = No<br>
             - <code>year_level</code>: 1 = 1st Year, 2 = 2nd Year, 3 = 3rd Year, 4 = 4th Year, etc.
         
         <form id="uploadForm" method="POST" enctype="multipart/form-data" action="/admin/upload_data/process_upload.php">
@@ -172,7 +172,7 @@ while ($row = $stmt->fetch_assoc()) {
 <script>
 $(document).ready(function () {
     $('#uploadHistoryTable').DataTable({
-        scrollY: '50vh',           // Adjust height for approx. 10 rows
+        scrollY: '50vh',           
         scrollCollapse: true,
         paging: true,
         pageLength: 10,
@@ -186,27 +186,137 @@ $(document).ready(function () {
             lengthMenu: "Show _MENU_ entries"
         }
     });
+    
+let cards = [];
+let currentPage = 0;
 
+function renderFormalCards(csv) {
+    const lines = csv.trim().split('\n');
+    if (lines.length < 2) return '<div>No data found</div>';
 
-    $('.view-btn').on('click', function () {
-        const id = $(this).data('id');
-        $.ajax({
-            url: '/admin/upload_data/get_raw_data.php',
-            method: 'POST',
-            data: { id: id },
-            success: function (response) {
-                const tableHTML = convertCSVToTable(response);
-                $('#fileContent').html(tableHTML);
-                new bootstrap.Modal(document.getElementById('viewModal')).show();
-            },
-            error: function () {
-                $('#fileContent').html('<div class="alert alert-danger">Failed to load data.</div>');
-                new bootstrap.Modal(document.getElementById('viewModal')).show();
-            }
+    const rawHeaders = lines[0].split(',');
+    const headers = rawHeaders.map(h => h.toLowerCase().replace(/\s+/g, '_'));
+
+    const readableMapping = {
+        'is_solo': { '1': 'No', '2': 'Yes' },
+        'is_regular': { '1': 'Yes', '2': 'No' },
+        'student_gender': { 'M': 'Male', 'F': 'Female', 'N/A': 'N/A' },
+        'same_address_flag': { '1': 'Yes', '2': 'No' }
+    };
+
+    cards = lines.slice(1).map(line => {
+        const row = line.split(',');
+        const rowData = {};
+        row.forEach((cell, idx) => {
+            const colName = headers[idx];
+            rowData[colName] = readableMapping[colName] && readableMapping[colName][cell] !== undefined
+                ? readableMapping[colName][cell]
+                : cell;
         });
+        return rowData;
     });
 
-  $('#uploadForm').on('submit', function (e) {
+    currentPage = 0;
+    return renderCard(currentPage);
+}
+
+function renderCard(page) {
+    const student = cards[page];
+    if (!student) return '<div>No data found</div>';
+
+    const studentInitials = (student.student_first_name[0] || '') + (student.student_last_name[0] || '');
+    const studentFullName = `${student.student_first_name} ${student.student_middle_name ? student.student_middle_name[0]+'.' : ''} ${student.student_last_name} ${student.student_suffix || ''}`.trim();
+
+    const parentInitials = (student.p_fname ? student.p_fname[0] : '') + (student.p_lname ? student.p_lname[0] : '');
+    const parentFullName = `${student.p_fname} ${student.p_mname ? student.p_mname[0]+'.' : ''} ${student.p_lname} ${student.p_suffix || ''}`.trim();
+
+    // Only show parent info if not Solo
+    const showParent = student.is_solo !== 'Yes';
+
+    const cardHTML = `
+    <div class="card mb-3">
+        <div class="card-body">
+                <h6 class="mt-3">Student Information</h6>
+            <div class="d-flex align-items-center mb-3">
+                <div class="avatar-circle bg-primary text-white d-flex align-items-center justify-content-center me-3" style="width:50px;height:50px;border-radius:50%;font-weight:bold;">
+                    ${studentInitials.toUpperCase()}
+                </div>
+                <strong>${studentFullName}</strong>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6"><strong>Gender:</strong> ${student.student_gender}</div>
+                <div class="col-md-6"><strong>Birthdate:</strong> ${student.student_birthdate}</div>
+                <div class="col-md-6"><strong>Contact Number:</strong> ${student.student_contact_number}</div>
+                <div class="col-md-6"><strong>Email:</strong> ${student.student_email}</div>
+                <div class="col-md-6"><strong>Address:</strong> ${student.student_address}</div>
+                <div class="col-md-6"><strong>Degree:</strong> ${student.student_degree}</div>
+                <div class="col-md-6"><strong>Year Level:</strong> ${student.year_level}</div>
+                <div class="col-md-6"><strong>Regular:</strong> ${student.is_regular}</div>
+                <div class="col-md-6"><strong>Solo:</strong> ${student.is_solo}</div>
+            </div>
+            ${showParent ? `
+            <h6 class="mt-3">Parent Information</h6>
+            <div class="d-flex align-items-center mb-2">
+                <div class="avatar-circle bg-success text-white d-flex align-items-center justify-content-center me-3" style="width:40px;height:40px;border-radius:50%;font-weight:bold;">
+                    ${parentInitials.toUpperCase()}
+                </div>
+                <strong>${parentFullName}</strong>
+            </div>
+            <div class="row mb-2">
+                <div class="col-md-6"><strong>Gender:</strong> ${student.p_gender}</div>
+                <div class="col-md-6"><strong>Birthdate:</strong> ${student.p_bdate}</div>
+                <div class="col-md-6"><strong>Email:</strong> ${student.p_email}</div>
+                <div class="col-md-6"><strong>Contact Number:</strong> ${student.p_cnum}</div>
+                <div class="col-md-6"><strong>Same Address as Student:</strong> ${student.same_address_flag}</div>
+                <div class="col-md-12"><strong>Address:</strong> ${student.parent_address}</div>
+            </div>` : ''}
+            <div class="d-flex justify-content-between mt-3">
+                <button class="btn btn-sm btn-outline-primary" id="prevRecord" ${page===0?'disabled':''}>Prev</button>
+                <span>Record ${page+1} of ${cards.length}</span>
+                <button class="btn btn-sm btn-outline-primary" id="nextRecord" ${page===cards.length-1?'disabled':''}>Next</button>
+            </div>
+        </div>
+    </div>`;
+
+    $('#fileContent').html(cardHTML);
+}
+
+// Prev/Next click handlers
+$('#fileContent').on('click', '#prevRecord', function() {
+    if (currentPage > 0) {
+        currentPage--;
+        renderCard(currentPage);
+    }
+});
+
+$('#fileContent').on('click', '#nextRecord', function() {
+    if (currentPage < cards.length - 1) {
+        currentPage++;
+        renderCard(currentPage);
+    }
+});
+
+// Delegate click for all pages
+$('#uploadHistoryTable').on('click', '.view-btn', function () {
+    const id = $(this).data('id');
+
+    $.ajax({
+        url: '/admin/upload_data/get_raw_data.php',
+        method: 'POST',
+        data: { id: id },
+        success: function (response) {
+            renderFormalCards(response);
+            new bootstrap.Modal(document.getElementById('viewModal')).show();
+        },
+        error: function () {
+            $('#fileContent').html('<div class="alert alert-danger">Failed to load data.</div>');
+            new bootstrap.Modal(document.getElementById('viewModal')).show();
+        }
+    });
+});
+
+
+$('#uploadForm').on('submit', function (e) {
     e.preventDefault();
 
     const fileInput = document.getElementById('csvFile');
@@ -266,29 +376,7 @@ $(document).ready(function () {
     reader.readAsArrayBuffer(file);
 });
 
-    function convertCSVToTable(csv) {
-        const rows = csv.trim().split('\n');
-        let html = '<table class="table table-bordered table-sm table-hover"><thead><tr>';
 
-        const headers = rows[0].split(',');
-        headers.forEach(header => {
-            html += `<th>${escapeHtml(header.trim())}</th>`;
-        });
-
-        html += '</tr></thead><tbody>';
-
-        for (let i = 1; i < rows.length; i++) {
-            html += '<tr>';
-            const cols = rows[i].split(',');
-            cols.forEach(col => {
-                html += `<td>${escapeHtml(col.trim())}</td>`;
-            });
-            html += '</tr>';
-        }
-
-        html += '</tbody></table>';
-        return html;
-    }
 
     function escapeHtml(text) {
         return text

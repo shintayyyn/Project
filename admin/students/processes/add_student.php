@@ -51,7 +51,7 @@ try {
     $s_cnum    = $_POST['s_cnum'];
     $s_address = $_POST['s_address'];
     $s_email   = $_POST['s_email'];
-    $s_status  = $_POST['s_status'] ?? 'inactive';
+    $s_status  = $_POST['s_status'] ?? 'active';
     $degree_id = intval($_POST['degree_id']);
     $year_level = intval($_POST['year_level'] ?? 1);
 

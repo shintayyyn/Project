@@ -206,17 +206,40 @@ try {
         $stmt->execute();
         $stmt->close();
 
-        // ===============================
-        // 5.5 ASSIGN SECTION TO STUDENT
-        // ===============================
-        $stmt = $conn->prepare("
-            INSERT INTO students_sections (s_id, term_id, section_id, section_code)
-            VALUES (?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE section_id=VALUES(section_id), section_code=VALUES(section_code)
-        ");
-        $stmt->bind_param('iiss', $s_id, $term_id, $section_id, $section_code);
-        $stmt->execute();
-        $stmt->close();
+       // ===============================
+// 5.5 ASSIGN SECTION TO STUDENT (with duplicate prevention)
+// ===============================
+$checkStmt = $conn->prepare("
+    SELECT section_id, section_code 
+    FROM students_sections 
+    WHERE s_id=? AND term_id=? 
+    LIMIT 1
+");
+$checkStmt->bind_param('ii', $s_id, $term_id);
+$checkStmt->execute();
+$checkRes = $checkStmt->get_result();
+$existing = $checkRes->fetch_assoc();
+$checkStmt->close();
+
+if ($existing) {
+    // ✅ Already assigned — skip instead of updating
+    $skipped++;
+    $skippedStudents[] = [
+        'id_code' => $student['id_code'],
+        'name' => $fullName,
+        'reason' => 'Already assigned to section ' . $existing['section_code']
+    ];
+    continue;
+}
+
+// ✅ Otherwise, insert new assignment
+$stmt = $conn->prepare("
+    INSERT INTO students_sections (s_id, term_id, section_id, section_code)
+    VALUES (?, ?, ?, ?)
+");
+$stmt->bind_param('iiss', $s_id, $term_id, $section_id, $section_code);
+$stmt->execute();
+$stmt->close();
 
         // ===============================
         // 5.5.1 UPDATE GENERATED QR SECTION
@@ -245,7 +268,7 @@ try {
         // ===============================
         // 5.6 UPDATE STUDENT STATUS
         // ===============================
-        $stmt = $conn->prepare("UPDATE students SET s_status='active', year_level=? WHERE s_id=?");
+        $stmt = $conn->prepare("UPDATE students SET s_status='active', enrollment_status = 'Enrolled', year_level=? WHERE s_id=?");
         $stmt->bind_param('ii', $student['year_level'], $s_id);
         $stmt->execute();
         $stmt->close();
@@ -320,9 +343,6 @@ if ($subRes->num_rows > 0) {
 
 
 // Continue to next student
-
-
-
         $assigned++;
     }
 
@@ -340,6 +360,11 @@ unlink($tempPath);
 // ===============================
 // 6. RESPONSE
 // ===============================
+
+// If only one section was processed, get its ID from the uploaded rows
+$unique_sections = array_unique(array_column($rows, 'section_id'));
+$response_section_id = (count($unique_sections) === 1) ? $unique_sections[0] : null;
+
 echo json_encode([
     'success' => true,
     'message' => "Upload complete.",
@@ -350,6 +375,7 @@ echo json_encode([
         'year_start' => $yearStart,
         'year_end' => $yearEnd,
         'semester' => $semester
-    ]
+    ],
+    'section_id' => $response_section_id // ✅ include section_id for JS refresh
 ]);
 exit;

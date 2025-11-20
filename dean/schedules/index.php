@@ -1,58 +1,69 @@
 <?php
+require_once __DIR__ . '/../../includes/db.php';
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-require_once __DIR__ . '/../../includes/db.php';
 
-// Get dean ID from session
+// ✅ Ensure a dean is logged in
 $dean_id = $_SESSION['t_id'] ?? null;
 if (!$dean_id) {
-    die("Unauthorized access. Dean not logged in.");
+    die('<div class="alert alert-danger">Dean not logged in.</div>');
 }
 
-// Get all degree_ids assigned to this dean
-$degree_stmt = $conn->prepare("SELECT degree_id FROM degrees WHERE dean_id = ?");
-$degree_stmt->bind_param("i", $dean_id);
-$degree_stmt->execute();
-$degree_result = $degree_stmt->get_result();
+// === Get dean's degree based on teachers table ===
+$dean_query = "
+SELECT t_id, t_department AS degree_id
+FROM teachers
+WHERE t_id = ? AND is_dean = 1
+LIMIT 1
+";
+$stmt = $conn->prepare($dean_query);
+$stmt->bind_param("i", $dean_id);
+$stmt->execute();
+$dean_result = $stmt->get_result();
+$dean_data = $dean_result->fetch_assoc();
 
-$degree_ids = [];
-while ($row = $degree_result->fetch_assoc()) {
-    $degree_ids[] = $row['degree_id'];
+if (!$dean_data) {
+    die('<div class="alert alert-danger">Dean not found or not authorized.</div>');
 }
 
-if (empty($degree_ids)) {
-    die("No degrees assigned to this dean.");
-}
+$dean_degree_id = intval($dean_data['degree_id']);
 
-// Prepare placeholders
-$placeholders = implode(',', array_fill(0, count($degree_ids), '?'));
-$types = str_repeat('i', count($degree_ids));
+// === Get active term ID dynamically ===
+$term_query = "SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1";
+$term_result = $conn->query($term_query);
+$active_term = $term_result->fetch_assoc();
+$current_term_id = $active_term['term_id'] ?? 0;
 
-// --- Filtered sections under dean's degrees
-$query = "SELECT DISTINCT 
-            s.section_id,
-            s.section_code,
-            s.year_level,
-            s.degree_id,
-            d.degree_code,
-            d.degree_name,
-            sa.t_id,
-            CONCAT(sa.t_lname, ', ', sa.t_fname, ' ', COALESCE(LEFT(sa.t_mname, 1), ''), '.') as advisor_name,
-            (SELECT COUNT(*) FROM students_sections ss WHERE ss.section_id = s.section_id) as student_count,
-            s.max_students
-          FROM sections s
-          LEFT JOIN sections_advisors sa ON s.section_id = sa.section_id
-          LEFT JOIN degrees d ON s.degree_id = d.degree_id
-          WHERE s.degree_id IN ($placeholders)
-          ORDER BY d.degree_code, s.year_level, s.section_code";
+// === Fetch sections for the dean's degree only ===
+$sections_query = "
+SELECT 
+    s.section_id,
+    s.section_code,
+    s.year_level,
+    s.degree_id,
+    d.degree_code,
+    d.degree_name,
+    sa.t_id,
+    CONCAT(sa.t_lname, ', ', sa.t_fname, ' ', COALESCE(LEFT(sa.t_mname, 1), '.')) AS advisor_name,
+    (SELECT COUNT(*) FROM students_sections ss WHERE ss.section_id = s.section_id) AS student_count,
+    s.max_students
+FROM sections s
+LEFT JOIN degrees d ON s.degree_id = d.degree_id
+LEFT JOIN sections_advisors sa 
+       ON s.section_id = sa.section_id
+      AND sa.term_id = ?
+WHERE s.degree_id = ?
+ORDER BY d.degree_code, s.year_level, s.section_code
+";
 
-$section_stmt = $conn->prepare($query);
-$section_stmt->bind_param($types, ...$degree_ids);
-$section_stmt->execute();
-$sections_result = $section_stmt->get_result();
+$stmt = $conn->prepare($sections_query);
+$stmt->bind_param("ii", $current_term_id, $dean_degree_id);
+$stmt->execute();
+$sections_result = $stmt->get_result();
 
-// Group sections by degree
+// Group sections by degree (should be only one degree)
 $sections_by_degree = [];
 while ($section = $sections_result->fetch_assoc()) {
     $degree_code = $section['degree_code'];
@@ -65,30 +76,49 @@ while ($section = $sections_result->fetch_assoc()) {
     $sections_by_degree[$degree_code]['sections'][] = $section;
 }
 
-// Fetch all rooms
+// === Fetch all rooms ===
 $rooms_query = "SELECT * FROM rooms ORDER BY room_number";
 $rooms_result = $conn->query($rooms_query);
 
-// Store rooms data for JavaScript
 $rooms_data = [];
 while ($room = $rooms_result->fetch_assoc()) {
     $rooms_data[] = $room;
 }
 $rooms_json = json_encode($rooms_data);
 
-// Fetch all subjects and their teachers
-$subjects_query = "SELECT DISTINCT 
-                    s.subject_id,
-                    s.subject_code,
-                    s.subject_description,
-                    s.units,
-                    st.t_id,
-                    CONCAT(st.t_lname, ', ', st.t_fname, ' ', COALESCE(LEFT(st.t_mname, 1), ''), '.') as teacher_name
-                  FROM subjects s
-                  LEFT JOIN subjects_teachers st ON s.subject_id = st.subject_id
-                  ORDER BY s.subject_code";
-$subjects_result = $conn->query($subjects_query);
+// === Fetch subjects for dean's degree only ===
+$subjects_query = "
+SELECT DISTINCT
+    subject_id,
+    subject_code,
+    subject_description,
+    units,
+    degree_id
+FROM subjects
+WHERE degree_id = ?
+ORDER BY subject_code
+";
+
+$stmt = $conn->prepare($subjects_query);
+$stmt->bind_param("i", $dean_degree_id);
+$stmt->execute();
+$subjects_result = $stmt->get_result();
+
+
+// Prepare dropdown info
+$dean_degree_code = null;
+$dean_degree_name = null;
+
+if (!empty($sections_by_degree)) {
+    foreach ($sections_by_degree as $degree_code => $degree_data) {
+        $dean_degree_code = $degree_code;
+        $dean_degree_name = $degree_data['degree_name'];
+        break; // only first
+    }
+}
 ?>
+
+
 
 <link rel="stylesheet" href="../css/common.css">
 <style>
@@ -233,8 +263,17 @@ button.btn-success {
     background-color: #EDF8FD;
 }
 
+.dataTables_wrapper{
+overflow: hidden;
+}
+
+.dataTables_scrollBody{
+overflow-x:hidden !important;
+}
+
 .header2{
-    background: #FFCB05;
+   background: var(--primary); 
+   color: white;
 }
 
 
@@ -266,11 +305,6 @@ button.btn-success {
 </style>
 
 <div class="container-fluid">
-    <!-- Add message containers -->
-    <div id="messageContainer" class="position-fixed start-50 translate-middle-x" style="z-index: 1060; top: 20px;"></div>
-    <div id="notificationContainer" class="position-fixed start-50 translate-middle-x" style="z-index: 1060; top: 20px;"></div>
-    <div id="alertContainer" class="position-fixed start-50 translate-middle-x" style="z-index: 1060; top: 20px;"></div>
-
     <div>
         <h1 class="h2 mb-2">Schedule Management</h1>
          <nav aria-label="breadcrumb">
@@ -281,37 +315,155 @@ button.btn-success {
             </nav>
     </div>
 
-    <!-- Sections with Schedules -->
-    <?php foreach ($sections_by_degree as $degree_code => $degree_data) { ?>
-    <div class="card mb-4 degree-card">
-        <div class="card-header header1">
-            <h4 class="mb-0">
-                <i class="bi bi-mortarboard-fill me-2"></i>
-                <?php echo htmlspecialchars($degree_code . ' - ' . $degree_data['degree_name']); ?>
-            </h4>
-        </div>
-        <div class="card-body ">
-            <div class="row g-0">
+<!-- Filters Row -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex align-items-center gap-2">
+  <div class="position-relative">
+    <!-- Filter icon inside select -->
+    <span 
+      style="
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--primary);
+        color: var(--tertiary);
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+        width: 38px;
+      ">
+      <i class="fa-solid fa-filter"></i>
+    </span>
+
+   <select id="degreeFilter" class="form-select w-auto" 
+        style="
+          border: 1px solid #033A70; 
+          border-radius: 8px; 
+          height: 50px; 
+          padding-left: 46px; /* icon space */
+          padding-top: 0;
+          padding-bottom: 0;
+          display: inline-block;
+          vertical-align: middle;
+          -webkit-appearance: none;
+          -moz-appearance: none;
+          appearance: none;
+        ">
+    <?php if ($dean_degree_code && $dean_degree_name): ?>
+        <option value="<?= htmlspecialchars($dean_degree_code); ?>">
+            <?= htmlspecialchars($dean_degree_code . ' - ' . $dean_degree_name); ?>
+        </option>
+    <?php endif; ?>
+</select>
+  </div>
+</div>
+
+
+ <div class="d-flex align-items-center gap-2">
+  <label for="searchInput" class="form-label mb-0"></label>
+  <div class="position-relative flex-grow-1">
+    <!-- Search icon inside span -->
+    <span 
+      style="
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--primary);
+        color: var(--tertiary);
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+        width: 38px;
+      ">
+      <i class="fa-brands fa-searchengin fa-lg"></i>
+    </span>
+
+    <!-- Input -->
+    <input 
+      type="text" 
+      id="searchSection" 
+      class="form-control ps-5 pe-5" 
+      placeholder="Search..."
+      style="
+        height: 50px; 
+        border: 1px solid #033A70; 
+        border-radius: 8px; 
+        vertical-align: middle;
+      "
+    >
+
+    <!-- Clear button -->
+    <button 
+      type="button" 
+      id="clearSearch" 
+      class="btn-close position-absolute end-0 top-50 translate-middle-y me-2" 
+      aria-label="Clear search" 
+      style="display:none; width: 38px; height: 38px; font-size: 0.8rem;">
+    </button>
+  </div>
+</div>
+
+
+</div>
+
+
+
+     <div class="row g-3" id="sectionsContainer">
+ <?php foreach ($sections_by_degree as $degree_code => $degree_data) { ?>
                 <?php foreach ($degree_data['sections'] as $section) { 
-                    // Get schedules for this section with subject and teacher details
-                    $schedules_query = "SELECT 
-                                        ss.*,
-                                        r.room_number,
-                                        r.capacity as room_capacity,
-                                        s.subject_description,
-                                        s.units,
-                                        CONCAT(t.t_lname, ', ', t.t_fname, ' ', COALESCE(LEFT(t.t_mname, 1), ''), '.') as teacher_name
-                                      FROM sections_schedules ss
-                                      LEFT JOIN rooms r ON ss.room_id = r.room_id
-                                      LEFT JOIN subjects s ON ss.subject_code = s.subject_code
-                                      LEFT JOIN teachers t ON ss.teacher_id = t.t_id
-                                      WHERE ss.section_id = " . $section['section_id'] . "
-                                      ORDER BY ss.day_of_week, ss.start_time";
-                    $schedules_result = $conn->query($schedules_query);
+                   
+                  // Get the active term ID first
+$term_result = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1");
+$active_term = $term_result->fetch_assoc();
+$active_term_id = $active_term['term_id'] ?? 2;
+
+// Fetch schedules for this section
+$schedules_query = "
+    SELECT 
+        ss.ss_id,
+        ss.schedule_group_id,
+        ss.term_id,
+        ss.subject_code,
+        s.subject_description,
+        s.units,
+        ss.teacher_id,
+        ss.day_of_week,
+        ss.start_time,
+        ss.end_time,
+        ss.room_id,
+        r.room_number,
+        r.capacity AS room_capacity,
+        CASE 
+            WHEN ss.term_id = $active_term_id AND ss.teacher_id IS NOT NULL THEN 
+                CONCAT(t.t_lname, ', ', t.t_fname, ' ', COALESCE(LEFT(t.t_mname,1),''), '.')
+            ELSE 'Not yet assigned'
+        END AS teacher_name
+    FROM sections_schedules ss
+    LEFT JOIN subjects s ON ss.subject_id = s.subject_id
+    LEFT JOIN rooms r ON ss.room_id = r.room_id
+    LEFT JOIN teachers t ON ss.teacher_id = t.t_id
+    WHERE ss.section_id = " . (int)$section['section_id'] . "
+    AND ss.subject_id IS NOT NULL
+    ORDER BY ss.schedule_group_id, ss.day_of_week, ss.start_time
+";
+
+$schedules_result = $conn->query($schedules_query);
+
+
+
                 ?>
-                    <div class="col-12 col-lg-6">
+                       <div class="col-12 col-lg-6 section-card" 
+                 data-degree="<?= htmlspecialchars($degree_code); ?>" 
+                 data-section="<?= htmlspecialchars($section['section_code']); ?>"
+                  data-section-id="<?= htmlspecialchars($section['section_id']); ?>">
                         <div class="card h-100">
-                            <div class="card-header">
+                            <div class=" card-header header2">
                                 <div class="d-flex flex-column">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <h5 class="card-title mb-0 d-flex align-items-center">
@@ -322,14 +474,13 @@ button.btn-success {
                                             </span>
                                         </h5>
                                         <div class="btn-group">
-                                            <button type="button" 
-                                                    class="btn btn-sm btn-primary"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#addScheduleModal"
-                                                    data-section-id="<?php echo $section['section_id']; ?>"
-                                                    data-section-code="<?php echo htmlspecialchars($section['section_code']); ?>">
-                                                <i class="bi bi-plus-lg me-1"></i>Add
-                                            </button>
+                                           <button type="button" 
+                                                class="btn btn-sm btn-primary add-schedule-btn"
+                                                data-section-id="<?= $section['section_id']; ?>"
+                                                data-section-code="<?= htmlspecialchars($section['section_code']); ?>"
+                                                data-degree-id="<?= $section['degree_id']; ?>">
+                                            <i class="bi bi-plus-lg me-1"></i>Add
+                                        </button>
                                         </div>
                                     </div>
                                     <?php if ($section['advisor_name']) { ?>
@@ -349,85 +500,131 @@ button.btn-success {
                                     <?php } ?>
                                 </div>
                             </div>
-                            <div class="card-body cbody1">
-                                <?php if($schedules_result->num_rows > 0) { ?>
-                                    <div class="table-responsive">
-                                        <table class="table table-sm table-hover align-middle schedule-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Day</th>
-                                                    <th>Time</th>
-                                                    <th>Subject</th>
-                                                    <th>Teacher</th>
-                                                    <th>Room</th>
-                                                    <th>Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <?php while($schedule = $schedules_result->fetch_assoc()) { ?>
-                                                    <tr>
-                                                        <td><?php echo $schedule['day_of_week']; ?></td>
-                                                        <td>
-                                                            <?php 
-                                                            echo date('h:i A', strtotime($schedule['start_time'])) . ' - ' . 
-                                                                 date('h:i A', strtotime($schedule['end_time']));
-                                                            ?>
-                                                        </td>
-                                                        <td>
-                                                            <div><?php echo htmlspecialchars($schedule['subject_code']); ?></div>
-                                                            <small class="text-muted"><?php echo htmlspecialchars($schedule['subject_description']); ?></small>
-                                                            <small class="text-muted"><?php echo $schedule['units']; ?> units</small>
-                                                        </td>
-                                                        <td>
-                                                            <?php 
-                                                                if (!empty($schedule['teacher_name'])) {
-                                                                    echo htmlspecialchars($schedule['teacher_name']);
-                                                                } else {
-                                                                    echo '<span class="text-muted schedule-teacher" data-subject-code="' . htmlspecialchars($schedule['subject_code']) . '">No teacher assigned</span>';
-                                                                }
-                                                            ?>
-                                                        </td>
-                                                        <td><?php echo htmlspecialchars($schedule['room_number']); ?></td>
-                                                        <td>
-                                                            <div class="btn-group">
-                                                                <button type="button" 
-                                                                        class="btn btn-sm btn-primary edit-schedule-btn" 
-                                                                        data-bs-toggle="modal" 
-                                                                        data-bs-target="#editScheduleModal" 
-                                                                        data-schedule-id="<?php echo $schedule['ss_id']; ?>" 
-                                                                        data-section-id="<?php echo $section['section_id']; ?>" 
-                                                                        data-subject-code="<?php echo htmlspecialchars($schedule['subject_code']); ?>"
-                                                                        data-teacher-id="<?php echo $schedule['teacher_id']; ?>"
-                                                                        data-day="<?php echo $schedule['day_of_week']; ?>"
-                                                                        data-start-time="<?php echo $schedule['start_time']; ?>"
-                                                                        data-end-time="<?php echo $schedule['end_time']; ?>"
-                                                                        data-room-id="<?php echo $schedule['room_id']; ?>">
-                                                                    <i class="bi bi-pencil-square"></i>
-                                                                </button>
-                                                                <button type="button" 
-                                                                        class="btn btn-sm btn-danger delete-schedule-btn" 
-                                                                        data-schedule-id="<?php echo $schedule['ss_id']; ?>">
-                                                                    <i class="bi bi-trash"></i>
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                <?php } ?>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                               <?php } else { ?>
-    <div class="alert alert-warning mb-0">
-        <i class="bi bi-calendar-x me-1"></i> No schedules yet.
-    </div>
-<?php } ?>
+                           <div class="card-body cbody1">
+    <?php if($schedules_result->num_rows > 0) { ?>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle schedule-table display nowrap">
+                <thead>
+                    <tr>
+                        <th>Day</th>
+                        <th>Time</th>
+                        <th>Subject</th>
+                        <th>Teacher</th>
+                        <th>Room</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    // Day abbreviation mapping
+                    $dayMap = [
+                        'Monday' => 'M',
+                        'Tuesday' => 'T',
+                        'Wednesday' => 'W',
+                        'Thursday' => 'Th',
+                        'Friday' => 'F',
+                        'Saturday' => 'Sa',
+                        'Sunday' => 'Sun'
+                    ];
+
+                    // Merge function
+                    if (!function_exists('mergeDays')) {
+                        function mergeDays($days, $dayMap) {
+                            $merged = [];
+                            foreach ($dayMap as $full => $abbr) {
+                                if (in_array($full, $days)) {
+                                    $merged[] = $abbr;
+                                }
+                            }
+                            return implode('', $merged);
+                        }
+                    }
+
+                    // Collect schedules and group by identical time/teacher/room/subject
+                    $groupedSchedules = [];
+                    while($schedule = $schedules_result->fetch_assoc()) {
+                        $key = $schedule['subject_code'] . '|' . $schedule['start_time'] . '|' . $schedule['end_time'] . '|' . $schedule['teacher_id'] . '|' . $schedule['room_id'];
+                        if (!isset($groupedSchedules[$key])) {
+                            $groupedSchedules[$key] = [
+                                'days' => [],
+                                'schedule' => $schedule
+                            ];
+                        }
+                        $groupedSchedules[$key]['days'][] = $schedule['day_of_week'];
+                    }
+
+                    // Display grouped schedules
+                    foreach ($groupedSchedules as $group) {
+                        $schedule = $group['schedule'];
+                        $days = $group['days'];
+
+                        $displayDays = mergeDays($days, $dayMap);
+                    ?>
+                        <tr>
+                            <td><?php echo $displayDays; ?></td>
+                            <td>
+                                 <?php 
+                                echo date('h:i A', strtotime($schedule['start_time'])) . ' - ' . 
+                                     date('h:i A', strtotime($schedule['end_time']));
+                                ?>
+                            </td>
+                           <td>
+                            <div class="d-flex flex-column">
+                                <span><?php echo htmlspecialchars($schedule['subject_code']); ?></span>
+                                <small class="text-muted mb-1">(<?php echo htmlspecialchars($schedule['subject_description']); ?>)</small>
+                                <small class="text-muted"><?php echo htmlspecialchars($schedule['units']); ?> units</small>
                             </div>
+                        </td>
+                            <td>
+                                <?php 
+                                if (!empty($schedule['teacher_name'])) {
+                                    echo htmlspecialchars($schedule['teacher_name']);
+                                } else {
+                                    echo '<span class="text-muted schedule-teacher" data-subject-code="' . htmlspecialchars($schedule['subject_code']) . '">No teacher assigned</span>';
+                                }
+                                ?>
+                            </td>
+                            <td><?php echo htmlspecialchars($schedule['room_number']); ?></td>
+                           <td>
+                <div class="btn-group">
+                    <button type="button" 
+                        class="btn btn-sm btn-primary edit-schedule-btn" 
+                        data-bs-toggle="modal" 
+                        data-bs-target="#editScheduleModal" 
+                        data-schedule-id="<?= $schedule['ss_id'] ?? ''; ?>"
+                        data-schedule-group-id="<?= $schedule['schedule_group_id'] ?? ''; ?>"
+                        data-section-id="<?= $section['section_id'] ?? ''; ?>"
+                        data-subject-code="<?= htmlspecialchars($schedule['subject_code'] ?? ''); ?>"
+                        data-teacher-id="<?= $schedule['teacher_id'] ?? ''; ?>"
+                        data-day="<?= isset($days) && is_array($days) ? implode(',', $days) : $schedule['day_of_week']; ?>"
+                        data-start-time="<?= $schedule['start_time'] ?? ''; ?>"
+                        data-end-time="<?= $schedule['end_time'] ?? ''; ?>"
+                        data-room-id="<?= $schedule['room_id'] ?? ''; ?>"
+                        data-term-id="<?= $schedule['term_id'] ?? ''; ?>">
+                        <i class="bi bi-pencil-square"></i>
+                    </button>
+
+        <button type="button" 
+                class="btn btn-sm btn-danger delete-schedule-btn" 
+                data-schedule-id="<?= $schedule['ss_id'] ?? ''; ?>">
+            <i class="bi bi-trash"></i>
+        </button>
+    </div>
+</td>
+
+                        </tr>
+                    <?php } ?>
+                </tbody>
+            </table>
+        </div>
+    <?php } else { ?>
+        <p class="text-muted mb-0">No schedules assigned to this section.</p>
+    <?php } ?>
+</div>
+
                         </div>
                     </div>
                 <?php } ?>
-            </div>
-        </div>
-    </div>
     <?php } ?>
 </div>
 
@@ -436,47 +633,57 @@ button.btn-success {
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add Schedule</h5>
+                <h5 class="modal-title" id="addScheduleModalLabel">Add Schedule</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="addScheduleForm" class="needs-validation" novalidate>
+                <!-- <input type="hidden" id="add_section_id" name="section_id"> -->
+                <input type="hidden" id="modal_section_code" name="section_code">
                 <div class="modal-body">
                     <input type="hidden" name="section_id" id="add_section_id">
-                    
+                
                     <div class="mb-3">
                         <label for="add_subject_code" class="form-label">Subject Code</label>
                         <select class="form-select" id="add_subject_code" name="subject_code" required>
-                            <option value="">Select Subject</option>
-                            <?php
-                            $subjects_result->data_seek(0); // Reset pointer to beginning
-                            while ($subject = $subjects_result->fetch_assoc()) {
-                                echo "<option value='{$subject['subject_code']}'>{$subject['subject_code']} - {$subject['subject_description']} ({$subject['units']} units)</option>";
-                            }
-                            ?>
+                            <option value="" disabled selected>Select Subject</option>
+                            <!-- Options will be loaded dynamically -->
                         </select>
                         <div class="invalid-feedback">Please select a subject.</div>
                     </div>
 
                     <div class="mb-3">
                         <label for="add_teacher_id" class="form-label">Teacher</label>
-                        <select class="form-select" id="add_teacher_id" name="teacher_id">
-                            <option value="">Select Teacher</option>
+                        <select class="form-select" id="add_teacher_id" name="teacher_id" required>
+                            <option value="" disabled selected>Select Teacher</option>
                         </select>
                         <div class="invalid-feedback">Please select a teacher.</div>
                     </div>
 
                     <div class="mb-3">
-                        <label for="add_day_of_week" class="form-label">Day</label>
-                        <select class="form-select" id="add_day_of_week" name="day_of_week" required>
-                            <option value="">Select Day</option>
-                            <option value="Monday">Monday</option>
-                            <option value="Tuesday">Tuesday</option>
-                            <option value="Wednesday">Wednesday</option>
-                            <option value="Thursday">Thursday</option>
-                            <option value="Friday">Friday</option>
-                            <option value="Saturday">Saturday</option>
-                        </select>
-                        <div class="invalid-feedback">Please select a day.</div>
+                        <label class="form-label">Day(s) of the Week </label>
+                        <div id="add_day_of_week" class="btn-group gap-2" role="group" aria-label="Select days">
+                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="dayMon" value="Monday" autocomplete="off">
+                            <label class="btn btn-outline-primary rounded-pill" for="dayMon">Mon</label>
+
+                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="dayTue" value="Tuesday" autocomplete="off">
+                            <label class="btn btn-outline-primary rounded-pill" for="dayTue">Tue</label>
+
+                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="dayWed" value="Wednesday" autocomplete="off">
+                            <label class="btn btn-outline-primary rounded-pill" for="dayWed">Wed</label>
+
+                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="dayThu" value="Thursday" autocomplete="off">
+                            <label class="btn btn-outline-primary rounded-pill" for="dayThu">Thu</label>
+
+                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="dayFri" value="Friday" autocomplete="off">
+                            <label class="btn btn-outline-primary rounded-pill" for="dayFri">Fri</label>
+
+                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="daySat" value="Saturday" autocomplete="off">
+                            <label class="btn btn-outline-primary rounded-pill" for="daySat">Sat</label>
+
+                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="daySun" value="Sunday" autocomplete="off">
+                            <label class="btn btn-outline-primary rounded-pill" for="daySun">Sun</label>
+                        </div>
+                        <div class="invalid-feedback d-block">Please select at least one day.</div>
                     </div>
 
                     <div class="row">
@@ -518,6 +725,18 @@ button.btn-success {
     </div>
 </div>
 
+<script>
+const allSubjects = [];
+<?php
+$subjects_result->data_seek(0);
+while ($subject = $subjects_result->fetch_assoc()) {
+    $jsSubject = json_encode($subject);
+    echo "allSubjects.push($jsSubject);\n";
+}
+?>
+</script>
+
+
 <!-- Edit Schedule Modal -->
 <div class="modal fade" id="editScheduleModal" tabindex="-1">
     <div class="modal-dialog">
@@ -529,8 +748,10 @@ button.btn-success {
             <div class="modal-body">
                 <form id="editScheduleForm" class="needs-validation" novalidate>
                     <input type="hidden" id="edit_schedule_id" name="schedule_id">
+                    <input type="hidden" id="edit_schedule_group_id" name="schedule_group_id">
                     <input type="hidden" id="edit_section_id" name="section_id">
-                    
+                    <input type="hidden" id="edit_term_id" name="term_id">
+
                     <div class="mb-3">
                         <label for="edit_subject_code" class="form-label">Subject</label>
                         <select class="form-select" id="edit_subject_code" name="subject_code" required>
@@ -555,17 +776,18 @@ button.btn-success {
                     </div>
 
                     <div class="mb-3">
-                        <label for="edit_day_of_week" class="form-label">Day</label>
-                        <select class="form-select" id="edit_day_of_week" name="day_of_week" required>
-                            <option value="">Select Day</option>
-                            <option value="Monday">Monday</option>
-                            <option value="Tuesday">Tuesday</option>
-                            <option value="Wednesday">Wednesday</option>
-                            <option value="Thursday">Thursday</option>
-                            <option value="Friday">Friday</option>
-                            <option value="Saturday">Saturday</option>
-                        </select>
-                        <div class="invalid-feedback">Please select a day.</div>
+                        <label class="form-label">Day(s) of the Week</label>
+                        <div id="edit_day_of_week" class="btn-group gap-2" role="group">
+                            <?php
+                            $days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+                            foreach ($days as $d) {
+                                $short = substr($d,0,3);
+                                echo '<input type="checkbox" class="btn-check" name="day_of_week[]" id="edit_day'.$short.'" value="'.$d.'" autocomplete="off">';
+                                echo '<label class="btn btn-outline-primary rounded-pill" for="edit_day'.$short.'">'.$short.'</label>';
+                            }
+                            ?>
+                        </div>
+                        <div class="invalid-feedback d-block">Please select at least one day.</div>
                     </div>
 
                     <div class="row mb-3">
@@ -606,18 +828,38 @@ button.btn-success {
     </div>
 </div>
 
+
+
+<!-- SweetAlert2 CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+
+<!-- SweetAlert2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+
 <script>
-    $(document).ready(function () {
+  $(document).ready(function () {
     $('table').DataTable({
-        scrollY: '650px',
+        scrollY: '50vh',
         scrollCollapse: true,
-        responsive: true,
+        responsive: {
+            details: {
+                type: 'inline',  // adds the toggle button
+                target: -1,      // last column
+                renderer: function(api, rowIdx, columns) {
+                    return columns
+                        .filter(col => col.hidden)
+                        .map(col => `<div><strong>${col.title}:</strong> ${col.data}</div>`)
+                        .join('');
+                }
+            }
+        },
+        autoWidth: false,
         paging: true,
         ordering: true,
         pageLength: 10,
         lengthMenu: [5, 10, 25, 50, 100],
         columnDefs: [
-            { orderable: false, targets: -1 } // Make last column unsortable (e.g., action buttons)
+            { orderable: false, targets: -1,  responsivePriority: 0 } // Make last column unsortable (e.g., action buttons)
         ],
         dom: '<"row mb-2"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>' +
              '<"row"<"col-sm-12"tr>>' +
@@ -629,6 +871,77 @@ button.btn-success {
         }
     });
 });
+
+// --------------------- Filter Sections ---------------------
+const degreeFilter = document.getElementById('degreeFilter');
+const searchSection = document.getElementById('searchSection');
+const clearBtn = document.getElementById('clearSearch');
+const sectionsContainer = document.getElementById('sectionsContainer');
+const noSectionsAlertId = 'noSectionsAlert';
+
+function filterSections() {
+    const degree = degreeFilter.value.toLowerCase();
+    const search = searchSection.value.toLowerCase();
+    let visibleCount = 0;
+
+    document.querySelectorAll('.section-card').forEach(card => {
+        const cardDegree = (card.dataset.degree || '').toLowerCase();
+        const cardText = card.textContent.toLowerCase(); // ✅ allow any search input
+
+        const matchesDegree = !degree || cardDegree === degree;
+        const matchesSearch = !search || cardText.includes(search);
+
+        const isVisible = matchesDegree && matchesSearch;
+        card.style.display = isVisible ? '' : 'none';
+
+        if (isVisible) visibleCount++;
+    });
+
+    // Show/hide "No sections found" alert
+    let alertBox = document.getElementById(noSectionsAlertId);
+    if (!alertBox) {
+        alertBox = document.createElement('div');
+        alertBox.id = noSectionsAlertId;
+        alertBox.className = 'alert alert-info mt-3';
+        alertBox.textContent = 'No sections found for the selected filter.';
+        sectionsContainer.prepend(alertBox);
+    }
+    alertBox.style.display = visibleCount === 0 ? '' : 'none';
+
+   // --- Counter Badge (always above alert) ---
+let countBadge = document.getElementById('visibleCountBadge');
+if (!countBadge) {
+    countBadge = document.createElement('div');
+    countBadge.id = 'visibleCountBadge';
+    countBadge.className = 'badge bg-primary mb-2 p-2 fs-6';
+    sectionsContainer.parentNode.insertBefore(countBadge, sectionsContainer);
+}
+countBadge.textContent = `Showing ${visibleCount} ${visibleCount === 1 ? 'Section' : 'Sections'}`;
+}
+
+// 🔹 Event listeners
+degreeFilter?.addEventListener('change', filterSections);
+searchSection?.addEventListener('input', filterSections);
+
+// 🔹 Clear button logic
+if (clearBtn) {
+    searchSection.addEventListener('input', () => {
+        clearBtn.style.display = searchSection.value ? 'inline-block' : 'none';
+    });
+
+    clearBtn.addEventListener('click', () => {
+        searchSection.value = '';
+        clearBtn.style.display = 'none';
+        searchSection.focus();
+        filterSections();
+    });
+
+    clearBtn.addEventListener('mouseover', () => (clearBtn.style.opacity = '1'));
+    clearBtn.addEventListener('mouseout', () => (clearBtn.style.opacity = '0.8'));
+}
+
+// Initial filter call
+filterSections();
 
 document.addEventListener('DOMContentLoaded', function() {
     // Bootstrap form validation
@@ -643,133 +956,233 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Add Schedule Form Handler
-    const addScheduleForm = document.getElementById('addScheduleForm');
-    if (addScheduleForm) {
-        addScheduleForm.addEventListener('submit', function(event) {
-            event.preventDefault();
-            
-            if (this.checkValidity()) {
-                const formData = new FormData(this);
-                formData.append('action', 'add_schedule');
-                
-                fetch('/Project/dean/ajax/schedules_ajax.php', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        // Show success message
-                        showAlert('success', 'Schedule added successfully!');
-                        // Close the modal
-                        const modal = bootstrap.Modal.getInstance(document.getElementById('addScheduleModal'));
-                        modal.hide();
-                        // Reload the page to show the new schedule
-                        setTimeout(() => window.location.reload(), 1000);
-                    } else {
-                        showAlert('danger', data.error || 'Error adding schedule');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showAlert('danger', 'Error adding schedule');
-                });
-            }
-            
+    document.querySelectorAll('.add-schedule-btn').forEach(button => {
+    button.addEventListener('click', function() {
+        const sectionId = this.getAttribute('data-section-id');
+        const sectionCode = this.getAttribute('data-section-code');
+        const degreeId = this.getAttribute('data-degree-id');
+
+        // Filter subjects for this section's degree
+        const subjectsForDegree = allSubjects.filter(sub => sub.degree_id == degreeId);
+
+        if (subjectsForDegree.length === 0) {
+            showAlert('info', `No subjects found for section ${sectionCode}`);
+            return;
+        }
+
+        // Populate the subjects dropdown
+        const subjectSelect = document.getElementById('add_subject_code');
+        subjectSelect.innerHTML = '<option value="">Select Subject</option>';
+        subjectsForDegree.forEach(sub => {
+            const option = document.createElement('option');
+            option.value = sub.subject_code;
+            option.textContent = `${sub.subject_code} - ${sub.subject_description} (${sub.units} units)`;
+            subjectSelect.appendChild(option);
+        });
+
+        // Set hidden inputs
+        document.getElementById('add_section_id').value = sectionId;
+        document.getElementById('modal_section_code').value = sectionCode;
+
+        // Update modal header
+        document.getElementById('addScheduleModalLabel').textContent = `Add Schedule (${sectionCode})`;
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('addScheduleModal'));
+        modal.show();
+    });
+    
+});
+
+    const addScheduleModal = document.getElementById('addScheduleModal');
+addScheduleModal.addEventListener('show.bs.modal', function (event) {
+    const button = event.relatedTarget;
+
+    const sectionId = button.getAttribute('data-section-id');
+    const sectionCode = button.getAttribute('data-section-code');
+
+    // Set hidden inputs
+    document.getElementById('add_section_id').value = sectionId;
+    document.getElementById('modal_section_code').value = sectionCode;
+
+    // Update modal header
+    const modalTitle = addScheduleModal.querySelector('#addScheduleModalLabel');
+    modalTitle.textContent = `Add Schedule (${sectionCode})`;
+});
+
+// Add Schedule Form Handler
+const addScheduleForm = document.getElementById('addScheduleForm');
+if (addScheduleForm) {
+    addScheduleForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+
+        if (!this.checkValidity()) {
             this.classList.add('was-validated');
-        });
-    }
+            return;
+        }
 
-    // Edit Schedule Form Handler
-    const editScheduleModal = document.getElementById('editScheduleModal');
-    if (editScheduleModal) {
-        editScheduleModal.addEventListener('show.bs.modal', async function(event) {
-            const button = event.relatedTarget;
-            const scheduleId = button.getAttribute('data-schedule-id');
-            const sectionId = button.getAttribute('data-section-id');
-            const subjectCode = button.getAttribute('data-subject-code');
-            const teacherId = button.getAttribute('data-teacher-id');
-            const day = button.getAttribute('data-day');
-            const startTime = button.getAttribute('data-start-time');
-            const endTime = button.getAttribute('data-end-time');
-            const roomId = button.getAttribute('data-room-id');
-            
-            // Reset form validation
-            const form = editScheduleModal.querySelector('form');
-            form.classList.remove('was-validated');
-            
-            // Set the schedule ID and section ID in the form
-            document.getElementById('edit_schedule_id').value = scheduleId;
-            document.getElementById('edit_section_id').value = sectionId;
-            
-            // Set subject code
-            const editSubjectCode = document.getElementById('edit_subject_code');
-            editSubjectCode.value = subjectCode;
-            
-            // Load teachers for the subject
-            await loadTeachersForSubject(subjectCode, 'edit_teacher_id');
-            
-            // Set the selected teacher after teachers are loaded
-            const teacherSelect = document.getElementById('edit_teacher_id');
-            if (teacherId && teacherId !== 'null') {
-                teacherSelect.value = teacherId;
-            } else {
-                teacherSelect.value = '';
-            }
-            
-            // Set other fields
-            document.getElementById('edit_day_of_week').value = day;
-            document.getElementById('edit_start_time').value = startTime;
-            document.getElementById('edit_end_time').value = endTime;
-            document.getElementById('edit_room_id').value = roomId;
+        // Collect all checked days
+        const checkedDays = [];
+        document.querySelectorAll('#add_day_of_week input[type="checkbox"]:checked').forEach(cb => {
+            checkedDays.push(cb.value);
         });
 
-        // Handle form submission
-        const editForm = editScheduleModal.querySelector('form');
-        editForm.addEventListener('submit', async function(event) {
-            event.preventDefault();
-            
-            if (!this.checkValidity()) {
-                event.stopPropagation();
-                this.classList.add('was-validated');
-                return;
-            }
-            
-            const formData = new FormData(this);
-            formData.append('action', 'update_schedule');
-            
-            // Debug log
-            console.log('Submitting form with data:');
-            for (let [key, value] of formData.entries()) {
-                console.log(`${key}: ${value}`);
-            }
-            
-            try {
-                const response = await fetch('/Project/dean/ajax/schedules_ajax.php', {
-                    method: 'POST',
-                    body: formData
+        if (checkedDays.length === 0) {
+            showAlert('warning', 'Please select at least one day.');
+            return;
+        }
+
+        const sectionId = document.getElementById('add_section_id').value;
+        const subjectCode = document.getElementById('add_subject_code').value;
+        const teacherId = document.getElementById('add_teacher_id').value;
+        const startTime = document.getElementById('add_start_time').value;
+        const endTime = document.getElementById('add_end_time').value;
+        const roomId = document.getElementById('add_room').value;
+
+        if (!sectionId || !subjectCode || !teacherId || !startTime || !endTime || !roomId) {
+            showAlert('warning', 'Please fill all required fields.');
+            return;
+        }
+
+        // Loop through each day and submit a separate request
+        const promises = checkedDays.map(day => {
+            const formData = new FormData();
+            formData.append('action', 'add_schedule');
+            formData.append('section_id', sectionId);
+            formData.append('subject_code', subjectCode);
+            formData.append('teacher_id', teacherId);
+            formData.append('day_of_week', day);
+            formData.append('start_time', startTime);
+            formData.append('end_time', endTime);
+            formData.append('room_id', roomId);
+
+            return fetch('/admin/ajax/schedules_ajax.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json());
+        });
+
+        // Wait for all requests to finish
+        Promise.all(promises)
+            .then(results => {
+                let hasError = false;
+                results.forEach(res => {
+                    if (!res.success) {
+                        hasError = true;
+                        showAlert('danger', res.error || 'Error adding schedule');
+                    }
                 });
-                
-                const data = await response.json();
-                console.log('Server response:', data);  // Debug log
-                
-                if (data.success) {
-                    showAlert('success', data.message);
-                    // Close the modal
-                    const modal = bootstrap.Modal.getInstance(editScheduleModal);
+
+                if (!hasError) {
+                    showAlert('success', 'Schedule added successfully!');
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('addScheduleModal'));
                     modal.hide();
-                    // Reload the page to show updated schedule
-                    location.reload();
-                } else {
-                    showAlert('danger', data.error || 'Failed to update schedule');
+                    setTimeout(() => window.location.reload(), 1000);
                 }
-            } catch (error) {
+            })
+            .catch(error => {
                 console.error('Error:', error);
-                showAlert('danger', 'An error occurred while updating the schedule');
+                showAlert('danger', 'Error adding schedule');
+            });
+
+        this.classList.add('was-validated');
+    });
+}
+
+  
+const editScheduleModal = document.getElementById('editScheduleModal');
+if (editScheduleModal) {
+    editScheduleModal.addEventListener('show.bs.modal', async function(event) {
+        const button = event.relatedTarget;
+
+        // Fetch data attributes
+        const scheduleId = button.getAttribute('data-schedule-id');
+        const sectionId = button.getAttribute('data-section-id');
+        const subjectCode = button.getAttribute('data-subject-code');
+        const teacherId = button.getAttribute('data-teacher-id');
+        const day = button.getAttribute('data-day'); // comma-separated
+        const startTime = button.getAttribute('data-start-time');
+        const endTime = button.getAttribute('data-end-time');
+        const roomId = button.getAttribute('data-room-id');
+        const termId = button.getAttribute('data-term-id'); 
+        const scheduleGroupId = button.getAttribute('data-schedule-group-id');
+
+        const form = editScheduleModal.querySelector('form');
+        form.classList.remove('was-validated');
+
+        // Set form values
+        document.getElementById('edit_schedule_id').value = scheduleId;
+        document.getElementById('edit_section_id').value = sectionId;
+        document.getElementById('edit_term_id').value = termId;
+        document.getElementById('edit_schedule_group_id').value = scheduleGroupId;
+
+        document.getElementById('edit_subject_code').value = subjectCode;
+
+        await loadTeachersForSubject(subjectCode, 'edit_teacher_id');
+        const teacherSelect = document.getElementById('edit_teacher_id');
+        teacherSelect.value = teacherId && teacherId !== 'null' ? teacherId : '';
+
+        // Pre-check day checkboxes
+        const daysArray = day.split(',').map(d => d.trim());
+        const dayCheckboxes = editScheduleModal.querySelectorAll('input[name="day_of_week[]"]');
+        dayCheckboxes.forEach(cb => cb.checked = daysArray.includes(cb.value));
+
+        document.getElementById('edit_start_time').value = startTime;
+        document.getElementById('edit_end_time').value = endTime;
+        document.getElementById('edit_room_id').value = roomId;
+    });
+
+    // Handle form submission
+    const editForm = editScheduleModal.querySelector('form');
+    editForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        if (!this.checkValidity()) {
+            event.stopPropagation();
+            this.classList.add('was-validated');
+            return;
+        }
+
+        const formData = new FormData(this);
+        formData.append('action', 'update_schedule');
+
+        try {
+            const response = await fetch('/admin/ajax/schedules_ajax.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showAlert('success', data.message);
+                bootstrap.Modal.getInstance(editScheduleModal).hide();
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showAlert('danger', data.error || 'Failed to update schedule');
             }
-        });
-    }
+        } catch (error) {
+            console.error('Error:', error);
+            showAlert('danger', 'An unexpected error occurred.');
+        }
+    });
+
+    // Reload teachers when changing subject
+    document.getElementById('edit_subject_code').addEventListener('change', function() {
+        loadTeachersForSubject(this.value, 'edit_teacher_id');
+    });
+}
+
+
+// Function to update schedule displays when teachers change
+function updateScheduleTeachers(subjectCode, teacherName) {
+    const scheduleTeachers = document.querySelectorAll(`.schedule-teacher[data-subject-code="${subjectCode}"]`);
+    scheduleTeachers.forEach(element => {
+        element.textContent = teacherName || 'No teacher assigned';
+        element.className = teacherName ? '' : 'text-muted schedule-teacher';
+    });
+}
+
 
     // Delete Schedule Handler
     document.querySelectorAll('.delete-schedule-btn').forEach(button => {
@@ -780,7 +1193,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 formData.append('action', 'delete_schedule');
                 formData.append('schedule_id', scheduleId);
                 
-                fetch('/Project/dean/ajax/schedules_ajax.php', {
+                fetch(' /admin/ajax/schedules_ajax.php', {
                     method: 'POST',
                     body: formData
                 })
@@ -801,96 +1214,60 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Add Schedule Modal Handler
-    const addScheduleModal = document.getElementById('addScheduleModal');
-    if (addScheduleModal) {
-        addScheduleModal.addEventListener('show.bs.modal', function(event) {
-            const button = event.relatedTarget;
-            const sectionId = button.getAttribute('data-section-id');
-            const sectionCode = button.getAttribute('data-section-code');
-            
-            // Set the section ID in the form
-            const sectionIdInput = document.querySelector('#addScheduleModal input[name="section_id"]');
-            if (sectionIdInput) {
-                sectionIdInput.value = sectionId;
-            }
-            
-            // Update modal title to include section code
-            const modalTitle = addScheduleModal.querySelector('.modal-title');
-            if (modalTitle) {
-                modalTitle.textContent = `Add Schedule - Section ${sectionCode}`;
-            }
-        });
-    }
 
     // Handle subject selection change for Add Schedule
     document.getElementById('add_subject_code').addEventListener('change', function() {
         loadTeachersForSubject(this.value, 'add_teacher_id');
     });
 
-    // Handle subject selection change for Edit Schedule
-    document.getElementById('edit_subject_code').addEventListener('change', function() {
-        loadTeachersForSubject(this.value, 'edit_teacher_id');
-    });
 
-    // Function to load teachers for a subject
-    async function loadTeachersForSubject(subjectCode, teacherSelectId) {
-        const teacherSelect = document.getElementById(teacherSelectId);
-        
-        // Clear existing options
-        teacherSelect.innerHTML = '<option value="">Select Teacher</option>';
-        
-        if (subjectCode) {
-            try {
-                // Fetch teachers for the selected subject
-                const formData = new FormData();
-                formData.append('action', 'get_subject_teachers');
-                formData.append('subject_code', subjectCode);
-                
-                const response = await fetch('/Project/dean/ajax/schedules_ajax.php', {
-                    method: 'POST',
-                    body: formData
+   // Function to load all teachers (not filtered by subject code)
+ async function loadTeachersForSubject(subjectCode, teacherSelectId) {
+    const teacherSelect = document.getElementById(teacherSelectId);
+
+    // Clear existing options
+    teacherSelect.innerHTML = '<option value="">Select Teacher</option>';
+
+    try {
+        // Always fetch all teachers, ignore subjectCode
+        const formData = new FormData();
+        formData.append('action', 'get_subject_teachers');
+
+        const response = await fetch(' /admin/ajax/schedules_ajax.php', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            if (data.teachers && data.teachers.length > 0) {
+                data.teachers.forEach(teacher => {
+                    const option = document.createElement('option');
+                    option.value = teacher.t_id;
+                     option.textContent = `${teacher.teacher_name} (${teacher.t_status.toUpperCase() || '-'} - ${teacher.degree_code|| '-'})`;
+                    teacherSelect.appendChild(option);
                 });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    if (data.hasTeachers) {
-                        data.teachers.forEach(teacher => {
-                            const option = document.createElement('option');
-                            option.value = teacher.t_id;
-                            option.textContent = teacher.teacher_name;
-                            teacherSelect.appendChild(option);
-                        });
-                    } else {
-                        const option = document.createElement('option');
-                        option.value = '';
-                        option.textContent = 'No teacher assigned to this subject yet';
-                        option.selected = true;
-                        teacherSelect.appendChild(option);
-                    }
-                } else {
-                    throw new Error(data.error || 'Error loading teachers');
-                }
-            } catch (error) {
-                console.error('Error:', error);
+            } else {
                 const option = document.createElement('option');
                 option.value = '';
-                option.textContent = 'Error loading teachers';
+                option.textContent = 'No teachers found';
                 option.selected = true;
                 teacherSelect.appendChild(option);
             }
+        } else {
+            throw new Error(data.error || 'Error loading teachers');
         }
+    } catch (error) {
+        console.error('Error:', error);
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'Error loading teachers';
+        option.selected = true;
+        teacherSelect.appendChild(option);
     }
+}
 
-    // Function to update schedule displays when teachers change
-    function updateScheduleTeachers(subjectCode, teacherName) {
-        const scheduleTeachers = document.querySelectorAll(`.schedule-teacher[data-subject-code="${subjectCode}"]`);
-        scheduleTeachers.forEach(element => {
-            element.textContent = teacherName || 'No teacher assigned';
-            element.className = teacherName ? '' : 'text-muted schedule-teacher';
-        });
-    }
 
     // Function to check for teacher updates
     function checkForTeacherUpdates() {
@@ -903,7 +1280,7 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append('action', 'check_teacher_updates');
         formData.append('subject_codes', JSON.stringify(subjectCodes));
 
-        fetch('/Project/dean/ajax/schedules_ajax.php', {
+        fetch('/admin/ajax/schedules_ajax.php', {
             method: 'POST',
             body: formData
         })
@@ -924,23 +1301,56 @@ document.addEventListener('DOMContentLoaded', function() {
     checkForTeacherUpdates();
 
     // Remove required attribute from teacher select in add/edit forms
-    document.querySelectorAll('#add_teacher_id, #edit_teacher_id').forEach(select => {
+    document.querySelectorAll('#edit_teacher_id').forEach(select => {
         select.removeAttribute('required');
     });
-
-    // Helper function to show alerts
-    function showAlert(type, message) {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-        document.getElementById('alertContainer').appendChild(alertDiv);
-        
-        setTimeout(() => {
-            alertDiv.remove();
-        }, 5000);
-    }
 });
+
+  // Helper function to show alerts
+   function showAlert(type, message) {
+    // Ensure type is lowercase string
+    type = (type || 'info').toLowerCase();
+
+    let icon;
+    let title;
+
+    switch(type) {
+        case 'success':
+            icon = 'success';
+            title = 'Success!';
+            break;
+        case 'error':
+        case 'danger':
+            icon = 'error';
+            title = 'Error!';
+            break;
+        case 'info':
+            icon = 'info';
+            title = 'Notice';
+            break;
+        case 'warning':
+            icon = 'warning';
+            title = 'Warning!';
+            break;
+        default:
+            icon = 'info';
+            title = 'Notice';
+    }
+
+    Swal.fire({
+        icon: icon,
+        title: title,
+        text: message || '',
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 5000,
+        timerProgressBar: true,
+        didOpen: (toast) => {
+            toast.addEventListener('mouseenter', Swal.stopTimer);
+            toast.addEventListener('mouseleave', Swal.resumeTimer);
+        }
+    });
+}
+
 </script>

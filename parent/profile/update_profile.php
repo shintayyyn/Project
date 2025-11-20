@@ -105,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($changes_made) {
             echo json_encode(['status' => 'success', 'message' => 'Parent profile updated successfully']);
         } else {
-            echo json_encode(['status' => 'info', 'message' => 'No changes were made']);
+            echo json_encode(['status' => 'info', 'message' => 'No changes were made.']);
         }
 
     } catch (Exception $e) {

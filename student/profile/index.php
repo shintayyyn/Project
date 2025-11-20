@@ -37,12 +37,7 @@ $stmt->close();
 ?>
 
 <style>
-:root {
-    --primary: #3d52a0;
-    --secondary: #7091E6;
-    --card-border-radius: 0.75rem;
-    --transition-speed: 0.3s;
-}
+
 
 /* Main content area */
 main {
@@ -58,6 +53,12 @@ main {
     width: 100%;
     margin: 0;
     overflow-x: hidden;
+}
+
+@media (max-width: 767.98px) {
+    .container-fluid {
+        padding: 0.1rem;/* smaller horizontal padding on mobile */
+    }
 }
 
 /* Card styling */
@@ -155,7 +156,7 @@ main {
 }
 
 /* Button styles */
-.btn-primary {
+.btn-primary{
     background: linear-gradient(145deg, var(--primary) 0%, var(--secondary) 100%) !important;
     border: none !important;
     padding: 0.875rem 2rem !important;
@@ -242,6 +243,9 @@ main {
     0% { transform: translate(-50%, -50%) rotate(0deg); }
     100% { transform: translate(-50%, -50%) rotate(360deg); }
 }
+.otp-input{
+    width:45px;
+}
 </style>
 
 <main>
@@ -250,18 +254,30 @@ main {
         <div class="row g-0">
             <div class="col-md-12">
                 <div class="card">
-                    <div class="profile-header">
-                        <div class="profile-avatar">
-                            <?php
-                            $initials = strtoupper(substr($student['s_fname'] ?? '', 0, 1) . substr($student['s_lname'] ?? '', 0, 1));
-                            echo htmlspecialchars($initials);
-                            ?>
-                        </div>
-                        <div class="profile-info">
-                            <h1><?php echo htmlspecialchars($student['s_fname'] ?? '') . ' ' . htmlspecialchars($student['s_lname'] ?? ''); ?></h1>
-                            <p>Student</p>
-                        </div>
-                    </div>
+                    <div class="profile-header d-flex align-items-center justify-content-between flex-wrap">
+    <div class="d-flex align-items-center mb-2 mb-md-0">
+        <div class="profile-avatar me-3">
+            <?php
+            $initials = strtoupper(substr($student['s_fname'] ?? '', 0, 1) . substr($student['s_lname'] ?? '', 0, 1));
+            echo htmlspecialchars($initials);
+            ?>
+        </div>
+        <div class="profile-info">
+            <h1 class="mb-0"><?php echo htmlspecialchars($student['s_fname'] ?? '') . ' ' . htmlspecialchars($student['s_lname'] ?? ''); ?></h1>
+            <p class="mb-0">Student</p>
+        </div>
+    </div>
+
+   <div class="bg-white shadow-sm rounded-pill px-4 py-2 text-muted small d-inline-flex align-items-center flex-nowrap">
+    <i class="bi bi-clock-history me-1"></i>
+    Last Updated:
+    <span id="last-updated" class="ms-1 fw-semibold text-dark">
+        <?= htmlspecialchars($_SESSION['last_updated']); ?>
+    </span>
+</div>
+
+</div>
+
                     
                     <div class="card-body">
                         <form method="post" id="profileForm">
@@ -315,11 +331,12 @@ main {
                                 <div class="col-md-6">
                                     <div class="form-group mb-3">
                                         <label class="form-label">Email Address</label>
-                                        <div class="input-group">
-                                            <input type="email" class="form-control" name="email" id="emailInput"
-                                                value="<?php echo htmlspecialchars($student['s_email'] ?? ''); ?>" required>
-                                            <button type="button" class="btn btn-primary" id="sendOtpBtn">Send OTP</button>
-                                        </div>
+                                        <div class="d-flex flex-column flex-md-row">
+    <input type="email" class="form-control me-md-2 mb-2 mb-md-0" name="email" id="emailInput"
+           value="<?php echo htmlspecialchars($student['s_email'] ?? ''); ?>" required>
+    <button type="button" class="btn btn-primary btn-sm" id="sendOtpBtn">Send OTP</button>
+</div>
+
                                         <small class="form-text text-muted">You must verify OTP if you change your email.</small>
                                     </div>
                                 </div>
@@ -332,11 +349,11 @@ main {
                                 </div>
                             </div>
 
-                            <div class="text-end" style="margin-top: -25px;">
+                            <div class="text-end" style="margin-top: 5px;">
                                 <button type="button" class="btn btn-primary" id="saveButton">Save Changes</button>
                             </div>
                         </form>
-                         <hr>
+                         <!-- <hr>
                         <h5>Your QR Code</h5>
                         <div class="text-center mb-3" id="qrContainer" style="position: relative; width: 300px; margin: 0 auto;">
                             <?php if ($qr_code): ?>
@@ -355,7 +372,7 @@ main {
 
                         <div class="text-center">
                             <button type="button" class="btn btn-primary" id="regenerateQR">Regenerate QR Code</button>
-                        </div>
+                        </div> -->
                     </div>
                 </div>
             </div>
@@ -367,26 +384,26 @@ main {
 <div class="modal fade" id="otpModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Verify Email OTP</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+     <div class="modal-header">
+        <h5 class="modal-title fw-bold">Verify Email OTP</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body text-center">
         <p>Enter the 6-digit OTP sent to your new email:</p>
         <div class="d-flex justify-content-center gap-2 mb-2">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
         </div>
         <div id="otpFeedback" class="mb-2 text-center"></div>
         <div class="mb-2">
             <small id="otpTimerText" class="text-muted">OTP expires in 01:00</small>
         </div>
         <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" id="resendOtpBtn">Resend OTP</button>
+            <button type="button" class="btn btn-warning fw-semi-bold" id="resendOtpBtn">Resend OTP</button>
             <button type="button" class="btn btn-primary" id="verifyOtpBtn">Verify OTP</button>
         </div>
       </div>
@@ -438,7 +455,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const otpTimerText = document.getElementById("otpTimerText");
 
     let originalEmail = "<?php echo htmlspecialchars($student['s_email'] ?? ''); ?>";
-    let otpVerified = false;
+   let otpVerified = localStorage.getItem("otpVerified") === "true"; // ✅ load from storage
+
     let otpTimer;
     let otpTimeLeft;
 
@@ -454,23 +472,80 @@ document.addEventListener("DOMContentLoaded", function () {
         setTimeout(() => alertContainer.innerHTML = '', 3000);
     }
 
-    function startOtpTimer(duration = 60) {
-        clearInterval(otpTimer);
+function startOtpTimer(duration = 600) {
+    clearInterval(otpTimer);
+
+    const savedExpiry = localStorage.getItem("otpExpiresAt");
+    let expiresAt;
+
+    if (savedExpiry) {
+        expiresAt = parseInt(savedExpiry, 10);
+
+        // If expired already, clear storage and stop timer
+        if (Date.now() >= expiresAt) {
+            localStorage.removeItem("otpExpiresAt");
+            otpTimeLeft = 0;
+            updateTimerDisplay();
+            return;
+        }
+
+        // Restore remaining time
+        otpTimeLeft = Math.floor((expiresAt - Date.now()) / 1000);
+
+        // Reopen modal if the page was refreshed or modal was closed
+        otpModal.show();
+        otpFeedbackModal.innerHTML = `<span class="text-warning">Please complete your OTP verification.</span>`;
+        otpInputs.forEach(i => { 
+            i.disabled = false; 
+            if (!i.value) i.value = ""; 
+        });
+        if (verifyOtpBtn) verifyOtpBtn.disabled = false;
+
+    } else {
+        // Fresh OTP timer
+        expiresAt = Date.now() + duration * 1000;
+        localStorage.setItem("otpExpiresAt", expiresAt);
         otpTimeLeft = duration;
-        updateTimerDisplay();
-        otpTimer = setInterval(() => {
-            otpTimeLeft--;
-            if (otpTimeLeft <= 0) {
-                clearInterval(otpTimer);
-                otpFeedbackModal.innerHTML = `<span class="text-danger">OTP expired. Please resend.</span>`;
-                otpTimerText.textContent = "OTP expired";
-                otpInputs.forEach(input => input.disabled = true);
-                if (verifyOtpBtn) verifyOtpBtn.disabled = true;
-            } else {
-                updateTimerDisplay();
-            }
-        }, 1000);
+
+        otpModal.show();
     }
+
+    updateTimerDisplay();
+
+    otpTimer = setInterval(() => {
+        const now = Date.now();
+        otpTimeLeft = Math.floor((expiresAt - now) / 1000);
+
+        if (otpTimeLeft <= 0) {
+            clearInterval(otpTimer);
+            localStorage.removeItem("otpExpiresAt");
+
+            otpFeedbackModal.innerHTML = `<span class="text-danger">OTP expired. Please resend.</span>`;
+            otpTimerText.textContent = "OTP expired";
+
+            otpInputs.forEach(i => i.disabled = true);
+            if (verifyOtpBtn) verifyOtpBtn.disabled = true;
+
+            return;
+        }
+
+        updateTimerDisplay();
+    }, 1000);
+}
+
+// ---------------------- CHECK EXISTING OTP ON PAGE LOAD ----------------------
+if (!otpVerified) {   // ✅ only reopen if OTP is not verified
+    const savedExpiry = localStorage.getItem("otpExpiresAt");
+    if (savedExpiry && Date.now() < parseInt(savedExpiry, 10)) {
+        otpInputs.forEach(i => { i.value = ""; i.disabled = false; });
+        if (verifyOtpBtn) verifyOtpBtn.disabled = false;
+        otpInputs[0].focus();
+        otpModal.show();
+        startOtpTimer();
+    }
+}
+
+
 
     function updateTimerDisplay() {
         const minutes = Math.floor(otpTimeLeft / 60).toString().padStart(2, "0");
@@ -492,23 +567,34 @@ document.addEventListener("DOMContentLoaded", function () {
         })
         .then(res => res.json())
         .then(data => {
-            if (data.status === "success") {
-                otpVerified = false;
-                otpModal.show();
-                otpFeedbackModal.innerHTML = `<span class="text-success">${data.message}</span>`;
-                otpInputs.forEach(input => { input.value = ""; input.disabled = false; });
-                if (verifyOtpBtn) verifyOtpBtn.disabled = false;
-                otpInputs[0].focus();
-                startOtpTimer(60);
-            } else if (data.status === "warning" && data.otp_valid_until) {
-                otpVerified = false;
-                otpModal.show();
-                otpFeedbackModal.innerHTML = `<span class="text-warning">${data.message}<br><small>Valid until: ${data.otp_valid_until}</small></span>`;
-                otpInputs.forEach(input => { input.value = ""; input.disabled = false; });
-                if (verifyOtpBtn) verifyOtpBtn.disabled = false;
-                otpInputs[0].focus();
-                startOtpTimer(60);
-            } else {
+           if (data.status === "success") {
+    const expiresAt = Date.now() + 600000; // 10 mins
+    localStorage.setItem("otpExpiresAt", expiresAt);
+
+    otpVerified = false;
+localStorage.setItem("otpVerified", "false"); // reset flag
+
+    otpModal.show();
+    otpFeedbackModal.innerHTML = `<span class="text-success">${data.message}</span>`;
+    otpInputs.forEach(input => { input.value = ""; input.disabled = false; });
+    if (verifyOtpBtn) verifyOtpBtn.disabled = false;
+    otpInputs[0].focus();
+    startOtpTimer(); // no duration needed
+} else if (data.status === "warning" && data.otp_valid_until) {
+    const expiresAt = Date.now() + 600000; // 10 mins
+    localStorage.setItem("otpExpiresAt", expiresAt);
+
+   otpVerified = false;
+localStorage.setItem("otpVerified", "false"); // reset flag
+
+    otpModal.show();
+    otpFeedbackModal.innerHTML = `<span class="text-warning">${data.message}<br><small>Valid until: ${data.otp_valid_until}</small></span>`;
+    otpInputs.forEach(input => { input.value = ""; input.disabled = false; });
+    if (verifyOtpBtn) verifyOtpBtn.disabled = false;
+    otpInputs[0].focus();
+    startOtpTimer(); // no duration
+}
+ else {
                 showAlert(data.status, data.message);
             }
         })
@@ -548,12 +634,18 @@ document.addEventListener("DOMContentLoaded", function () {
             .then(res => res.json())
             .then(data => {
                 otpFeedbackModal.innerHTML = `<span class="text-${data.status === 'success' ? 'success' : 'danger'}">${data.message}</span>`;
-                if (data.status === "success") {
-                    otpVerified = true;
-                    clearInterval(otpTimer);
-                    otpModal.hide();
-                    showAlert("success", "Email OTP verified successfully.");
-                }
+               if (data.status === "success") {
+    otpVerified = true;
+    localStorage.setItem("otpVerified", "true");
+    localStorage.removeItem("otpExpiresAt");
+
+    localStorage.setItem("verifiedEmail", emailInput.value.trim()); // ✅ add this
+
+    clearInterval(otpTimer);
+    otpModal.hide();
+    showAlert("success", "Email OTP verified successfully.");
+}
+
             })
             .catch(err => {
                 console.error(err);
@@ -570,12 +662,24 @@ document.addEventListener("DOMContentLoaded", function () {
             saveButton.textContent = "Saving...";
 
             const newEmail = emailInput.value.trim();
-            if (newEmail !== originalEmail && !otpVerified) {
-                showAlert("danger", "Please verify OTP before saving.");
-                saveButton.disabled = false;
-                saveButton.textContent = "Save Changes";
-                return;
-            }
+           const verifiedEmail = localStorage.getItem("verifiedEmail");
+
+if (newEmail !== originalEmail) {
+    if (!otpVerified) {
+        showAlert("danger", "Please verify OTP before saving.");
+        saveButton.disabled = false;
+        saveButton.textContent = "Save Changes";
+        return;
+    }
+
+    if (verifiedEmail !== newEmail) {
+        showAlert("danger", "OTP was not verified for this email.");
+        saveButton.disabled = false;
+        saveButton.textContent = "Save Changes";
+        return;
+    }
+}
+
 
             const formData = new FormData(form);
             fetch("/student/profile/update_profile.php", {

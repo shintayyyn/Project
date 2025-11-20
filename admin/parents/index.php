@@ -135,7 +135,7 @@ $result = $conn->query($sql);
         <div class="col-lg-8">
             <div class="card shadow-sm">
                 <div class="card-header">
-                    <h5>Parents List</h5>
+                    <h5 class="fw-bold">Parents List</h5>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive p-3 ">
@@ -264,13 +264,15 @@ $result = $conn->query($sql);
         <div class="col-lg-4">
             <div class="card shadow-sm" id="parentDetailsCard">
                 <div class="card-header">
-                    <h5>Parent's Info</h5>
+                    <h5 class="mb-0 fw-bold">Personal Information</h5>
                 </div>
                 <div class="card-body" id="parentDetailsBody">
-                    <div class="card-body-empty" id="noParentSelected">
+                    <div class="card-body-empty d-flex flex-column" id="noParentSelected">
                         <i class="bi bi-person-lines-fill"></i>
                         No parent selected.
+                        <small class=" fst-italic">Click a row in the table to view teacher information.</small>
                     </div>
+                    
                 </div>
             </div>
         </div>
@@ -319,32 +321,36 @@ $(document).ready(function() {
     order: [[10, 'desc']] // order by ps_created descending
 });
 
-$('.view-all-children').on('click', function(){
-        const parentId = $(this).data('parent-id');
-        $('#childrenList').empty(); // clear previous list
-        $('#parentName').text($(this).closest('tr').data('parent-name'));
 
-        $.ajax({
-            url: '/admin/parents/processes/get_children.php',
-            method: 'GET',
-            data: { parent_id: parentId },
-            dataType: 'json',
-            success: function(res){
-                if(res.success && res.children.length > 0){
-                    res.children.forEach(function(child){
-                        $('#childrenList').append(
-                            `<li class="list-group-item">
-                                ${child.name} - ${child.section} (${child.term}, ${child.year_level})
-                            </li>`
-                        );
-                    });
-                } else {
-                    $('#childrenList').append('<li class="list-group-item">No children found.</li>');
-                }
-                $('#childrenModal').modal('show');
+$(document).on('click', '.view-all-children', function(){
+    const parentId = $(this).data('parent-id');
+    $('#childrenList').empty(); // clear previous list
+    $('#parentName').text($(this).closest('tr').data('parent-name'));
+
+    $.ajax({
+        url: '/admin/parents/processes/get_children.php',
+        method: 'GET',
+        data: { parent_id: parentId },
+        dataType: 'json',
+        success: function(res){
+            if(res.success && res.children.length > 0){
+                res.children.forEach(function(child){
+                    $('#childrenList').append(
+                        `<li class="list-group-item">
+                            ${child.name} - ${child.section} (${child.term}, ${child.year_level})
+                        </li>`
+                    );
+                });
+            } else {
+                $('#childrenList').append('<li class="list-group-item">No children found.</li>');
             }
-        });
+            $('#childrenModal').modal('show');
+        },
+        error: function(xhr, status, error){
+            console.error('AJAX error:', error);
+        }
     });
+});
 
 
     // Row click - show parent details

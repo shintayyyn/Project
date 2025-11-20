@@ -6,55 +6,73 @@ require_once __DIR__ . '/includes/mailer.php';
 header('Content-Type: application/json');
 date_default_timezone_set('Asia/Manila');
 
-$action = $_POST['action'] ?? '';
-$user_id = $_POST['user_id'] ?? '';
+$action   = $_POST['action'] ?? '';
+$input_id = $_POST['user_id'] ?? ''; // could be idcode or official ID
+$email    = $_POST['email'] ?? '';   // needed for send_otp
 
 $tables = [
-    'students' => ['id_col' => 's_id', 'email_col' => 's_email'],
-    'teachers' => ['id_col' => 't_id', 'email_col' => 't_email'],
-    'parents'  => ['id_col' => 'p_id', 'email_col' => 'p_email']
+    'students' => ['id_col' => 's_id', 'email_col' => 's_email', 'user_type' => 'student'],
+    'teachers' => ['id_col' => 't_id', 'email_col' => 't_email', 'user_type' => 'teacher'],
+    'parents'  => ['id_col' => 'p_id', 'email_col' => 'p_email', 'user_type' => 'parent']
 ];
 
-// === SEND OTP ===
-if ($action == "send_otp") {
-    $email = $_POST['email'] ?? '';
-
-    $userExists = false;
+// ✅ Helper: resolve ID and return also user_type
+function resolveOfficialId($conn, $tables, $input_id, $email = '')
+{
     foreach ($tables as $table => $cols) {
-        $stmt = $conn->prepare("SELECT {$cols['id_col']} FROM $table WHERE {$cols['id_col']}=? AND {$cols['email_col']}=? LIMIT 1");
-        $stmt->bind_param("is", $user_id, $email);
+        if ($email !== '') {
+            $stmt = $conn->prepare("SELECT {$cols['id_col']} FROM $table WHERE idcode=? AND {$cols['email_col']}=? LIMIT 1");
+            $stmt->bind_param("ss", $input_id, $email);
+        } else {
+            $stmt = $conn->prepare("SELECT {$cols['id_col']} FROM $table WHERE {$cols['id_col']}=? OR idcode=? LIMIT 1");
+            $stmt->bind_param("ss", $input_id, $input_id);
+        }
+
         $stmt->execute();
         $res = $stmt->get_result();
         if ($res->num_rows > 0) {
-            $userExists = true;
-            break;
+            $row = $res->fetch_assoc();
+            return [
+                'id' => $row[$cols['id_col']],
+                'user_type' => $cols['user_type']
+            ];
         }
     }
+    return false;
+}
 
-    if (!$userExists) {
+// === SEND OTP ===
+if ($action == "send_otp") {
+    if (empty($input_id) || empty($email)) {
+        echo json_encode(['error' => "ID Code and Email are required"]);
+        exit;
+    }
+
+    $resolved = resolveOfficialId($conn, $tables, $input_id, $email);
+    if (!$resolved) {
         echo json_encode(['error' => "User ID or Email not found"]);
         exit;
     }
 
-    $otp = rand(100000, 999999);
-    $expiry = date('Y-m-d H:i:s', strtotime('+5 minutes'));
+    $official_id = $resolved['id'];
+    $user_type   = $resolved['user_type'];
 
-    // Insert or update OTP
-    $stmt = $conn->prepare("INSERT INTO password_resets(user_id, otp_code, otp_expiry, created_at) 
-        VALUES(?,?,?,NOW()) 
-        ON DUPLICATE KEY UPDATE otp_code=?, otp_expiry=?, created_at=NOW()");
-    $stmt->bind_param("issss", $user_id, $otp, $expiry, $otp, $expiry);
+    $otp = rand(100000, 999999);
+    $expiry = date('Y-m-d H:i:s', strtotime('+10 minutes'));
+
+    // Insert or update OTP (include user_type)
+    $stmt = $conn->prepare("
+        INSERT INTO password_resets(user_id, user_type, otp_code, otp_expiry, created_at) 
+        VALUES(?,?,?,?,NOW()) 
+        ON DUPLICATE KEY UPDATE otp_code=?, otp_expiry=?, user_type=?, created_at=NOW()
+    ");
+    $stmt->bind_param("sssssss", $official_id, $user_type, $otp, $expiry, $otp, $expiry, $user_type);
 
     if ($stmt->execute()) {
         $subject = "Your OTP Code for Password Reset";
-        $body = "Hello,<br><br>Your OTP code is: <b>$otp</b><br>It will expire in 5 minutes.<br><br>Regards,<br>Attendify";
+        $body = "Hello,<br><br>Your OTP code is: <b>$otp</b><br>It will expire in 10 minutes.<br><br>Regards,<br>Attendify";
         $mailSent = sendMail($email, $subject, $body);
-
-        if ($mailSent) {
-            echo json_encode(['success' => true]);
-        } else {
-            echo json_encode(['error' => "Failed to send OTP email"]);
-        }
+        echo json_encode($mailSent ? ['success' => true, 'user_type' => $user_type] : ['error' => "Failed to send OTP email"]);
     } else {
         echo json_encode(['error' => "Failed to generate OTP"]);
     }
@@ -63,21 +81,32 @@ if ($action == "send_otp") {
 
 // === VERIFY OTP ===
 if ($action == "verify_otp") {
-    $otp = $_POST['otp'] ?? '';
+    $otp_input = $_POST['otp'] ?? '';
+    if (empty($input_id) || empty($otp_input)) {
+        echo json_encode(['error' => "OTP are required"]);
+        exit;
+    }
+
+    $resolved = resolveOfficialId($conn, $tables, $input_id);
+    if (!$resolved) {
+        echo json_encode(['error' => "User not found"]);
+        exit;
+    }
+
+    $official_id = $resolved['id'];
+    $user_type   = $resolved['user_type'];
 
     $stmt = $conn->prepare("
-        SELECT otp_code, otp_expiry 
-        FROM password_resets 
-        WHERE user_id=? 
-        ORDER BY created_at DESC 
-        LIMIT 1
+        SELECT otp_code FROM password_resets 
+        WHERE user_id = ? AND otp_expiry > NOW()
+        ORDER BY created_at DESC LIMIT 1
     ");
-    $stmt->bind_param("i", $user_id);
+    $stmt->bind_param("s", $official_id);
     $stmt->execute();
     $res = $stmt->get_result()->fetch_assoc();
 
-    if ($res && strval($res['otp_code']) == strval($otp) && strtotime($res['otp_expiry']) > time()) {
-        echo json_encode(['success' => true]);
+    if ($res && hash_equals($res['otp_code'], $otp_input)) {
+        echo json_encode(['success' => true, 'user_type' => $user_type]);
     } else {
         echo json_encode(['error' => "Invalid or expired OTP"]);
     }
@@ -87,32 +116,45 @@ if ($action == "verify_otp") {
 // === SAVE NEW PASSWORD ===
 if ($action == "save_password") {
     $password = $_POST['password'] ?? '';
-    if (empty($password)) {
-        echo json_encode(['error'=>"Password cannot be empty"]);
+    if (empty($input_id) || empty($password)) {
+        echo json_encode(['error' => "User ID and Password are required"]);
         exit;
     }
 
-    $hashed = password_hash($password, PASSWORD_DEFAULT);
+    $resolved = resolveOfficialId($conn, $tables, $input_id);
+    if (!$resolved) {
+        echo json_encode(['error' => "User not found"]);
+        exit;
+    }
 
-    // Update password_resets (optional)
-    $stmt = $conn->prepare("UPDATE password_resets SET new_password=?, otp_code=NULL, otp_expiry=NULL WHERE user_id=?");
-    $stmt->bind_param("si", $hashed, $user_id);
+    $official_id = $resolved['id'];
+    $user_type   = $resolved['user_type'];
+    $hashed      = password_hash($password, PASSWORD_DEFAULT);
+
+    // Update password_resets
+    $stmt = $conn->prepare("
+        UPDATE password_resets 
+        SET new_password=?, otp_code=NULL, otp_expiry=NULL, user_type=? 
+        WHERE user_id=?
+    ");
+    $stmt->bind_param("sss", $hashed, $user_type, $official_id);
     $stmt->execute();
 
-    // Update actual user table dynamically
+    // Update password in the corresponding table
     foreach ($tables as $table => $cols) {
-        // Find password column dynamically
-        $colResult = $conn->query("SHOW COLUMNS FROM `$table` LIKE '%password%'");
-        $colRow = $colResult->fetch_assoc();
-        if ($colRow) {
-            $password_column = $colRow['Field'];
-
-            $stmt2 = $conn->prepare("UPDATE $table SET `$password_column`=? WHERE {$cols['id_col']}=?");
-            $stmt2->bind_param("si", $hashed, $user_id);
-            $stmt2->execute();
+        if ($cols['user_type'] === $user_type) {
+            $colResult = $conn->query("SHOW COLUMNS FROM `$table` LIKE '%password%'");
+            $colRow = $colResult->fetch_assoc();
+            if ($colRow) {
+                $password_column = $colRow['Field'];
+                $stmt2 = $conn->prepare("UPDATE $table SET `$password_column`=? WHERE {$cols['id_col']}=?");
+                $stmt2->bind_param("ss", $hashed, $official_id);
+                $stmt2->execute();
+            }
         }
     }
 
-    echo json_encode(['success' => true]);
+    echo json_encode(['success' => true, 'user_type' => $user_type]);
     exit;
 }
+?>

@@ -10,26 +10,27 @@ if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'teacher') {
 $teacher_id   = $_SESSION['user_id'];
 $subject_code = $_GET['subject_code'] ?? null;
 $section_id   = $_GET['section_id'] ?? null;
+$ss_id        = $_GET['ss_id'] ?? null;
 
-if (!$subject_code || !$section_id) {
-    echo "<script>showToast('Missing subject or section ID.'); window.location.href='../dashboard.php';</script>";
+if (!$subject_code || !$section_id || !$ss_id) {
+    echo "<script>showToast('Missing subject, section, or schedule ID.'); window.location.href='../dashboard.php';</script>";
     exit();
 }
 
 date_default_timezone_set('Asia/Manila');
-$currentDay  = date('l');   // e.g. Monday
-$today       = date('Y-m-d');
+$currentDay = date('l');
+$today      = date('Y-m-d');
 
-// ✅ Fetch subject schedule info (day, start, end, description, subject_id)
+// ✅ Fetch subject schedule info (using ss_id instead of subject_code)
 $subjectStmt = $conn->prepare("
     SELECT ss.subject_id, ss.day_of_week, ss.start_time, ss.end_time, ss.description
     FROM sections_schedules ss
-    WHERE ss.subject_code = ? 
-      AND ss.section_id = ? 
+    INNER JOIN subjects s ON ss.subject_id = s.subject_id
+    WHERE ss.ss_id = ?
       AND ss.teacher_id = ?
     LIMIT 1
 ");
-$subjectStmt->bind_param("sii", $subject_code, $section_id, $teacher_id);
+$subjectStmt->bind_param("ii", $ss_id, $teacher_id);
 $subjectStmt->execute();
 $subjectRes = $subjectStmt->get_result();
 
@@ -42,6 +43,8 @@ if ($subjectRes->num_rows > 0) {
     $start_time  = date('g:i A', strtotime($sched['start_time']));
     $end_time    = date('g:i A', strtotime($sched['end_time']));
     $description = $sched['description'];
+} else {
+    die("<script>alert('Schedule not found.'); window.history.back();</script>");
 }
 $subjectStmt->close();
 
@@ -53,21 +56,16 @@ $currentTermId = ($termRes->num_rows > 0) ? $termRes->fetch_assoc()['term_id'] :
 $termStmt->close();
 
 // ✅ Fetch subject description via subject_id
-$descStmt = $conn->prepare("
-    SELECT subject_description 
-    FROM subjects 
-    WHERE subject_id = ? 
-    LIMIT 1
-");
+$descStmt = $conn->prepare("SELECT subject_description FROM subjects WHERE subject_id = ? LIMIT 1");
 $descStmt->bind_param("i", $subject_id);
 $descStmt->execute();
 $descRes = $descStmt->get_result();
 $subject_description = ($descRes->num_rows > 0) ? $descRes->fetch_assoc()['subject_description'] : '';
 $descStmt->close();
 
-// ✅ Attendance fetching (aligned via subject_id instead of ss_id)
+// ✅ Fetch attendance — now filtered by ss_id
 $stmt = $conn->prepare("
-    SELECT a.attendance_id, s.s_fname, s.s_lname, sd.degree_code, sec.section_code, 
+    SELECT a.attendance_id, s.s_fname, s.s_lname, sd.degree_code, sec.section_code,
            subj.subject_code, subj.subject_description,
            a.time_in, a.time_out, a.status,
            ay.year_start, ay.year_end, t.semester
@@ -75,20 +73,21 @@ $stmt = $conn->prepare("
     INNER JOIN students s ON a.s_id = s.s_id
     INNER JOIN students_degrees sd ON s.s_id = sd.s_id
     INNER JOIN sections sec ON a.section_code = sec.section_code
-    INNER JOIN sections_schedules ss ON a.subject_id = ss.subject_id AND a.section_code = ss.section_code
+    INNER JOIN sections_schedules ss ON a.subject_id = ss.subject_id
     INNER JOIN subjects subj ON ss.subject_id = subj.subject_id
     INNER JOIN academic_terms t ON a.term_id = t.term_id
     INNER JOIN academic_years ay ON t.ay_id = ay.ay_id
-    WHERE ss.teacher_id = ? 
-      AND subj.subject_code = ? 
-      AND sec.section_id = ? 
+    WHERE ss.ss_id = ?
+      AND ss.teacher_id = ?
+      AND subj.subject_code = ?
+      AND sec.section_id = ?
     ORDER BY COALESCE(a.time_in, a.time_out) DESC
 ");
-$stmt->bind_param("isi", $teacher_id, $subject_code, $section_id);
+$stmt->bind_param("iisi", $ss_id, $teacher_id, $subject_code, $section_id);
 $stmt->execute();
 $res = $stmt->get_result();
-
 ?>
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -260,7 +259,6 @@ table.dataTable{
     .badge-warning { background-color: #ffc107 !important; color: #212529 !important; }
     .badge-danger  { background-color: #dc3545 !important; }
     .badge {
-      color: #fff;
       padding: 0.5em 0.6em;
       font-size: 0.85rem;
       border-radius: 0.25rem;
@@ -284,6 +282,37 @@ table.dataTable{
     padding: 6px;
     font-size: 0.9rem;
 }
+/* Sticky QR Scanner Panel */
+.sticky-scanner {
+  position: -webkit-sticky; /* Safari support */
+  position: sticky;
+  top: 20px; /* distance from top of viewport */
+  z-index: 1020; /* stays above other content */
+  background: #fff; /* white background to avoid blending */
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.subject-info{
+  margin-top: -100px;
+}
+
+
+.back-dashboard:hover {
+    background: var(--tertiary);
+    color:black !important;                 /* text color on hover */   /* background on hover */
+    border-radius: 4px;           /* optional rounded corners */
+    text-decoration: none;        /* remove underline */
+}
+
+.schedule{
+  margin-left: 5px;
+  display: flex;
+  justify-content: center;
+  align-items:center;
+}
+
 
   </style>
 
@@ -295,7 +324,7 @@ table.dataTable{
 <nav class="navbar navbar-expand-lg shadow-sm">
   <div class="container-fluid">
     <!-- Logo + Brand -->
-    <a class="navbar-brand d-flex align-items-center" href="#">
+    <a class="navbar-brand d-flex align-items-center" href="/teacher/dashboard.php?page=subjects">
       <i class="fa-solid fa-qrcode"></i>
       <span class="fw-bold ms-2">Attendify</span>
     </a>
@@ -306,19 +335,81 @@ table.dataTable{
       <span class="navbar-toggler-icon"></span>
     </button>
 
-    <!-- Nav Links -->
-    <div class="collapse navbar-collapse" id="navbarNav">
-      <ul class="navbar-nav ms-auto">
-        <li class="nav-item">
-          <a class="nav-link active" href="/teacher/dashboard.php">Dashboard</a>
-        </li>
-      </ul>
-    </div>
+   <!-- Nav Links -->
+<div class="collapse navbar-collapse" id="navbarNav">
+  <ul class="navbar-nav ms-auto">
+    <li class="nav-item me-2">
+      <a class="nav-link active back-dashboard" href="/teacher/dashboard.php">Back to Dashboard</a>
+    </li>
+    <li class="nav-item me-2 schedule">
+      <?php
+      // Subject + schedule badge
+      date_default_timezone_set('Asia/Manila');
+      $today = strtoupper(date('D'));
+      $todayShort = $today ?? '';
+      $currentTime = date('H:i:s');
+
+      // Fetch schedules
+      $schedQuery = $conn->prepare("
+          SELECT day_of_week, start_time, end_time 
+          FROM sections_schedules 
+          WHERE subject_code = ? AND section_id = ?
+      ");
+      $schedQuery->bind_param("ss", $subject_code, $section_id);
+      $schedQuery->execute();
+      $schedResult = $schedQuery->get_result();
+
+      $mergedSchedules = [];
+      if ($schedResult->num_rows > 0) {
+          while ($schedRow = $schedResult->fetch_assoc()) {
+              $day = strtoupper($schedRow['day_of_week']);
+              $start = $schedRow['start_time'];
+              $end = $schedRow['end_time'];
+
+              if (strpos($day, $todayShort) !== false) {
+                  $timeKey = "$start-$end";
+                  if (!isset($mergedSchedules[$timeKey])) {
+                      $mergedSchedules[$timeKey] = $day;
+                  } else {
+                      $mergedSchedules[$timeKey] .= $day;
+                  }
+              }
+          }
+      }
+
+      // Format schedule text
+      if (!empty($mergedSchedules)) {
+          $displayTexts = [];
+          foreach ($mergedSchedules as $timeKey => $days) {
+              [$start, $end] = explode('-', $timeKey);
+              $startFmt = date("h:i A", strtotime($start));
+              $endFmt = date("h:i A", strtotime($end));
+              $displayTexts[] = "$days ($startFmt - $endFmt)";
+          }
+          $scheduleText = implode(' | ', $displayTexts);
+          $scheduleBadgeClass = 'bg-success';
+      } else {
+          $scheduleText = 'No schedule today';
+          $scheduleBadgeClass = 'bg-warning';
+      }
+
+      $schedQuery->close();
+
+      // Combine subject and schedule into one badge
+      echo '<span class="badge rounded-pill ' . $scheduleBadgeClass . ' fs-6 fw-bold">';
+      echo htmlspecialchars($subject_code) . ' - ' . htmlspecialchars($subject_description);
+      echo ' | ' . $scheduleText;
+      echo '</span>';
+      ?>
+    </li>
+  </ul>
+</div>
+
 
     <!-- Button always far right -->
     <div class="d-flex">
       <button class="btn btn-warning enroll-btn ms-2"
-        data-ss-id="<?= $subject_id ?>"   
+        data-ss-id="<?= $ss_id?>"   
         data-subject-id="<?= $subject_id ?>"                          
         data-subject-code="<?= htmlspecialchars($subject_code) ?>"                      
         data-subject-description="<?= htmlspecialchars($subject_description) ?>"
@@ -339,16 +430,75 @@ table.dataTable{
 
     <div class="attendance-container row">
       <!-- QR Scanner -->
-      <div class="qr-container col-12 col-lg-4 d-flex flex-column justify-content-center align-items-center mb-4 mb-lg-0">
+      <div class="qr-container sticky-scanner col-12 col-lg-4 d-flex flex-column justify-content-center align-items-center mb-4 mb-lg-0">
         <div class="subject-info text-center mb-4">
-          <h3 class="fw-bold">
-            <?= htmlspecialchars($subject_code) ?> - <?= htmlspecialchars($subject_description)?>
-            </h3>
+      <?php
+$totalRegular = 0;
+$totalIrregular = 0;
+$totalCount = 0;
+
+// ✅ Get the section_code from the sections table (to ensure consistency)
+$secStmt = $conn->prepare("SELECT section_code FROM sections WHERE section_id = ? LIMIT 1");
+$secStmt->bind_param("i", $section_id);
+$secStmt->execute();
+$secRes = $secStmt->get_result();
+if ($secRes->num_rows > 0) {
+    $section_code = $secRes->fetch_assoc()['section_code'];
+} else {
+    $section_code = '';
+}
+$secStmt->close();
+
+
+// ✅ Count REGULAR students (is_regular = 1)
+$regularQuery = $conn->prepare("
+    SELECT COUNT(DISTINCT ss2.s_id) AS total_regular
+    FROM students_sections ss2
+    INNER JOIN students st2 ON ss2.s_id = st2.s_id
+    WHERE ss2.section_id = ?
+      AND ss2.term_id = ?
+      AND st2.is_regular = 1
+");
+$regularQuery->bind_param("ii", $section_id, $currentTermId);
+$regularQuery->execute();
+$regularResult = $regularQuery->get_result();
+if ($regularResult->num_rows > 0) {
+    $totalRegular = $regularResult->fetch_assoc()['total_regular'];
+}
+$regularQuery->close();
+
+
+// ✅ Count IRREGULAR students (is_regular = 2)
+$irregularQuery = $conn->prepare("
+    SELECT COUNT(DISTINCT se.s_id) AS total_irregular
+    FROM subject_enrollments se
+    INNER JOIN students st3 ON se.s_id = st3.s_id
+    WHERE se.subject_code = ?
+      AND se.term_id = ?
+      AND st3.is_regular = 2
+      AND (se.section_code = ? OR se.section_code IS NULL)
+");
+$irregularQuery->bind_param("sis", $subject_code, $currentTermId, $section_code);
+$irregularQuery->execute();
+$irregularResult = $irregularQuery->get_result();
+if ($irregularResult->num_rows > 0) {
+    $totalIrregular = $irregularResult->fetch_assoc()['total_irregular'];
+}
+$irregularQuery->close();
+
+$totalCount = $totalRegular + $totalIrregular;
+?>
+
+
+
 
         </div>
+        <div>
+          
+        </div>
 
-        <div class="scanner-con w-100 text-center">
-          <div class="scanner-controls mb-2">
+        <div class="scanner-con mt-5 text-center">
+          <div class="scanner-controls">
             <button id="btnTurnOn" class="btn btn-primary me-2">Turn On Scanner</button>
             <button id="btnTurnOff" class="btn btn-danger" disabled>Turn Off Scanner</button>
           </div>
@@ -370,12 +520,24 @@ table.dataTable{
             <input type="hidden" name="qr_code" id="detected-qr-code">
           </form>
         </div>
+        <!-- ✅ Display -->
+<div class="countersBadge mb-2 d-flex flex-wrap align-items-center gap-3">
+  <span class="badge bg-success fs-6">
+    Total Students: <?= htmlspecialchars($totalCount) ?>
+  </span>
+  <span class="badge bg-primary fs-6">
+    Regular: <?= htmlspecialchars($totalRegular) ?>
+  </span>
+  <span class="badge bg-warning text-dark fs-6">
+    Irregular: <?= htmlspecialchars($totalIrregular) ?>
+  </span>
+</div>
       </div>
 
       <!-- Attendance List -->
       <div class="attendance-list col-12 col-lg-8">
       <div class="d-flex align-items-center justify-content-between mb-3">
-  <h2 class="mb-0">List of Present Students</h2>
+      <h2 class="mb-0">List of Present Students</h2>
   
   <!-- Attendance Stats -->
   <div class="d-flex gap-2 attendanceStats">
@@ -408,9 +570,8 @@ table.dataTable{
       <div class="card-body">
           <div class="table-responsive shadow rounded p-3">
   <table class="table" id="attendanceTable">
-      <thead class="ttext-center">
+      <thead class="text-center">
           <tr>
-            <th class="d-lg-none"></th>
               <th >No.</th>
               <th >Name</th>
               <th>Course & Section</th>
@@ -431,7 +592,7 @@ table.dataTable{
                     echo '<tr><td colspan="8" class="text-center text-danger">No subject or section selected.</td></tr>';
                 } else {
                     $stmt = $conn->prepare("
-                                        SELECT a.attendance_id, s.s_id, s.s_fname, s.s_lname, 
+                                        SELECT a.attendance_id, s.s_id, s.s_fname, s.s_lname, s.s_mname, s.s_suffix,
                         MAX(sd.degree_code) AS degree_code, sec.section_code, 
                         a.subject_code, a.time_in, a.time_out, a.status,
                         ay.year_start, ay.year_end, t.semester
@@ -448,7 +609,7 @@ table.dataTable{
                     AND a.subject_code = ? 
                     AND sec.section_id = ?
                     GROUP BY a.attendance_id
-                    ORDER BY COALESCE(s.s_lname, a.time_in, a.time_out) DESC
+                    ORDER BY COALESCE( a.time_in, a.time_out) DESC
 
                     ");
                     $stmt->bind_param("isi", $teacher_id, $subject_code, $section_id);
@@ -471,9 +632,18 @@ table.dataTable{
                         }
               ?>
                 <tr data-attendance-id="<?= $row['attendance_id'] ?>" >
-                  <td class="d-lg-none"></td>
                   <td><?= $i++ ?></td>
-                  <td><?= htmlspecialchars($row['s_fname'] . ' ' . $row['s_lname']) ?></td>
+                  <td>
+                  <?php
+                    $lname = ucfirst($row['s_lname']);
+                    $suffix = !empty($row['s_suffix']) ? ' ' . $row['s_suffix'] : '';
+                    $fname = ucfirst($row['s_fname']);
+                    $mname = !empty($row['s_mname']) ? ' ' . strtoupper(substr($row['s_mname'], 0, 1)) . '.' : '';
+
+                    echo htmlspecialchars("{$lname}{$suffix}, {$fname}{$mname}");
+                  ?>
+                </td>
+
                   <td><?= htmlspecialchars(' ' . $row['section_code']) ?></td>
                   <td>
                     <?php
@@ -507,14 +677,24 @@ table.dataTable{
                     <?= "A.Y. {$row['year_start']}-{$row['year_end']} | {$row['semester']}" ?>
                     </td>
                   <td class="text-center">
-                    <?php
-                      $badgeClass = 'secondary';
-                      if ($status === 'Present') $badgeClass = 'success';
-                      elseif ($status === 'Late') $badgeClass = 'warning';
-                      elseif ($status === 'Absent') $badgeClass = 'danger';
-                    ?>
-                    <span class="badge bg-<?= $badgeClass ?>"><?= $status ?: 'N/A' ?></span>
-                  </td>
+  <?php
+    $badgeClass = 'secondary';
+    $textClass = ''; // default text color
+
+    if ($status === 'Present') {
+        $badgeClass = 'success';
+    } elseif ($status === 'Late') {
+        $badgeClass = 'warning';
+        $textClass = 'text-dark'; // ✅ add dark text for warning
+    } elseif ($status === 'Absent') {
+        $badgeClass = 'danger';
+    }
+  ?>
+  <span class="badge bg-<?= $badgeClass ?> <?= $textClass ?>">
+    <?= $status ?: '-' ?>
+  </span>
+</td>
+
                 </tr>
               <?php endwhile; } ?>
             </tbody>
@@ -592,27 +772,59 @@ table.dataTable{
                 return;
             }
 
-  // ---------- DATA TABLE ----------
+/* ======================================================
+   DATA TABLE: Sort by Time In (date only) then Last Name
+====================================================== */
+// Custom sort type: use only the date part of "Time In"
+$.fn.dataTable.ext.type.order['date-only-pre'] = function (d) {
+    if (!d) return 0; // handle empty cells
+    return Date.parse(d.split(' ')[0]); // parse only YYYY-MM-DD
+};
+// ---------- DATA TABLE ----------
 window.studentsTable = $('#attendanceTable').DataTable({
-    responsive: true,          // keeps columns responsive
-    autoWidth: false,          // disable automatic column resizing
-    scrollY: '60vh',           // vertical scroll only
+    responsive: true,
+    autoWidth: false,
+    scrollY: '60vh',
     scrollCollapse: true,
     paging: true,
     ordering: true,
-    order: [[1, 'asc']],       // sort by Name ascending
-    pageLength: 20,
-    lengthMenu: [5, 10, 25, 50, 100],
-    scroller: true,
+
+    // Remove all DataTables buttons (including toggle/colvis)
+    dom: 'lrtip', // no "B"
+    buttons: [],  // ensure no buttons load
+
+    // Optional: initial sort if needed
+    // order: [[3, 'asc']],  // sort by "Time In" ascending
     columnDefs: [
         { 
-            orderable: false,
+            orderable: false, 
             className: 'text-center',
-            targets: 0,  // first column = toggle
-            render: () => '<button class="btn btn-sm btn-primary toggle-details-btn">+</button>'
-        }
-    ]
+        },
+        { type: 'date-only', targets: 3 } // custom type for "Time In" column
+    ],
+    pageLength: 20,
+    lengthMenu: [
+        [5, 10, 20, 25, 50, 100],
+        [5, 10, 20, 25, 50, 100]
+    ],
+    scroller: true,
+
+    
 });
+
+
+// Reindex table after sort/search/draw
+window.studentsTable.on('order.dt search.dt draw.dt', function () {
+    reindexTable();
+});
+
+// Function to maintain numbering
+function reindexTable() {
+    $('#attendanceTable tbody tr').each(function (index) {
+        $(this).find('td:first').html(index + 1);
+    });
+}
+
 
             const html5QrCode = new Html5Qrcode("reader");
             const config = {
@@ -782,70 +994,121 @@ window.studentsTable = $('#attendanceTable').DataTable({
             document.getElementById("lateCount").innerText = <?= $lateCount ?>;
             document.getElementById("absentCount").innerText = <?= $absentCount ?>;
 
-            function updateCounters() {
-                let present = 0,
-                    late = 0,
-                    absent = 0;
-                const today = new Date().toISOString().split("T")[0]; // yyyy-mm-dd
+        function updateCounters() {
+    let present = 0, late = 0, absent = 0;
+    const today = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
 
-                document.querySelectorAll("#attendanceTable tbody tr").forEach(row => {
-                    const timeInCell = row.querySelector("td:nth-child(4)");
-                    if (!timeInCell) return;
+    // Loop through visible table rows
+    $('#attendanceTable tbody tr').each(function () {
+        const $row = $(this);
+        const statusBadge = $row.find('td:last .badge'); // ✅ last column (Status)
+        if (!statusBadge.length) return;
 
-                    const text = timeInCell.innerText.trim();
-                    const rowDate = text ? new Date(text).toISOString().split("T")[0] : today;
+        const status = statusBadge.text().trim();
+        const timeInText = $row.find('td').eq(3).text().trim(); // ✅ Time In column
+        if (!timeInText) return;
 
-                    // ✅ Skip if not today
-                    if (rowDate !== today) return;
+        // Extract date from timeInText (e.g., "Oct 21, 2025 8:55 PM")
+        const datePart = timeInText.split(' ')[0] + ' ' + timeInText.split(' ')[1].replace(',', '');
+        const rowDate = new Date(timeInText);
+        const rowDateStr = (rowDate.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }));
 
-                    const statusBadge = row.querySelector("td:nth-child(6) .badge");
-                    if (!statusBadge) return;
-                    const status = statusBadge.innerText.trim();
+        // ✅ Count only today's records
+        if (rowDateStr !== today) return;
 
-                    if (status === "Present") present++;
-                    else if (status === "Late") late++;
-                    else if (status === "Absent") absent++;
-                });
+        if (status === "Present") present++;
+        else if (status === "Late") late++;
+        else if (status === "Absent") absent++;
+    });
 
-                document.getElementById("presentCount").innerText = present;
-                document.getElementById("lateCount").innerText = late;
-                document.getElementById("absentCount").innerText = absent;
-            }
+    // ✅ Update the counters
+    $('#presentCount').text(present);
+    $('#lateCount').text(late);
+    $('#absentCount').text(absent);
+}
 
+function updateTable(data) {
+    const row = $(`#attendanceTable tbody tr[data-attendance-id="${data.id}"]`);
+    const todayDate = new Date().toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    });
 
-            // ------------------ Table Update ------------------
-            function updateTable(data) {
-                const row = $(`#attendanceTable tbody tr[data-attendance-id="${data.id}"]`);
-                const todayDate = new Date().toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                });
-                const timeIn = data.time_in || `<span class="text-muted">${todayDate} —</span>`;
-                const timeOut = data.time_out ? data.time_out : (data.status === "Absent" ? `<span class="text-muted">${todayDate} —</span>` : "—");
-                const badge = getBadge(data.status);
+    const timeIn = data.time_in || `<span class="text-muted">${todayDate} —</span>`;
+    const timeOut = data.time_out
+        ? data.time_out
+        : (data.status === "Absent" ? `<span class="text-muted">${todayDate} —</span>` : "—");
 
-                if (row.length) {
-                    row.find("td").eq(3).html(timeIn);
-                    row.find("td").eq(4).html(timeOut);
-                    row.find("td").eq(5).html(badge);
-                    row.addClass("highlight");
-                    setTimeout(() => row.removeClass("highlight"), 1500);
-                } else {
-                    const newRow = dataTable.row.add([
-                        dataTable.rows().count() + 1,
-                        data.name,
-                        data.course_section,
-                        timeIn,
-                        timeOut,
-                        badge,
-                        `<button class="btn btn-danger btn-sm" onclick="deleteAttendance(${data.id}, this)">X</button>`
-                    ]).draw(false).node();
+    const badge = `<div class="text-center">${getBadge(data.status)}</div>`;
+    const termText = data.term || '<span class="text-muted">—</span>';
 
-                    $(newRow).attr("data-attendance-id", data.id).addClass("highlight");
-                    setTimeout(() => $(newRow).removeClass("highlight"), 1500);
-                }
-            }
+    // ✅ Format name as "Lastname Suffix, Firstname M."
+    let lastName = data.s_lname ? data.s_lname.trim() : "";
+    let suffix = data.s_suffix ? data.s_suffix.trim() : "";
+    let firstName = data.s_fname ? data.s_fname.trim() : "";
+    let middleName = data.s_mname ? data.s_mname.trim() : "";
+
+    // Middle initial
+    const middleInitial = middleName ? middleName.charAt(0).toUpperCase() + "." : "";
+
+    // Combine suffix with last name
+    const lastWithSuffix = suffix ? `${lastName} ${suffix}` : lastName;
+
+    // Final display name: "Lastname Jr., Juan R."
+    const displayName = `${lastWithSuffix}, ${firstName} ${middleInitial}`;
+
+    if (row.length) {
+        // ✅ Update existing row dynamically
+        row.find("td").eq(3).html(timeIn);
+        row.find("td").eq(4).html(timeOut);
+        row.find("td").eq(5).html(termText);
+        row.find("td").eq(6).html(badge);
+
+        row.addClass("highlight");
+        setTimeout(() => row.removeClass("highlight"), 1500);
+    } else {
+        // ✅ Add new row dynamically if not found
+        const newRow = window.studentsTable.row.add([
+            '',                    // No. (will be reindexed)
+            displayName,           // Name (Lastname, Firstname)
+            data.course_section,   // Course & Section
+            timeIn,                // Time In
+            timeOut,               // Time Out
+            termText,              // Term
+            badge                  // ✅ Centered Status
+        ]).draw(false).node();
+
+        $(newRow)
+            .attr("data-attendance-id", data.id)
+            .addClass("highlight");
+
+        setTimeout(() => $(newRow).removeClass("highlight"), 1500);
+    }
+
+    // ✅ Custom sorting: by Time In (col 3) then by Name (col 1)
+    // DataTables column indices: 0=No, 1=Name, 2=Section, 3=Time In, 4=Time Out, 5=Term, 6=Status
+    // window.studentsTable.order([
+    //     [3, 'desc'], // sort by Time In first
+    //     [1, 'desc']  // then by Lastname
+    // ]).draw(false);
+
+    // ✅ Reindex numbering (always starts from 1)
+    $('#attendanceTable tbody tr').each(function (index) {
+        $(this).find('td:first').html(index + 1);
+    });
+
+    // ✅ Update counters right after updating table
+    updateCounters();
+}
 
             function getBadge(status) {
                 const badgeMap = {
@@ -854,7 +1117,7 @@ window.studentsTable = $('#attendanceTable').DataTable({
                     "Absent": "danger"
                 };
                 const badgeClass = badgeMap[status] || "secondary";
-                return `<span class="badge badge-${badgeClass}">${status}</span>`;
+                return `<span class="text-center badge badge-${badgeClass}">${status}</span>`;
             }
 
             // ------------------ Toast ------------------

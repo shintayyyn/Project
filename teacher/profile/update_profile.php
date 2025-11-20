@@ -28,62 +28,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('Invalid CSRF token');
         }
 
-        // Validate required fields
-        $required_fields = ['firstname', 'lastname', 'gender', 'birthdate', 'contact', 'email', 'department'];
-        foreach ($required_fields as $field) {
-            if (!isset($_POST[$field]) || trim($_POST[$field]) === '') {
-                throw new Exception("$field is required");
-            }
-        }
+   // Validate required fields (exclude department and status)
+$required_fields = ['firstname', 'lastname', 'gender', 'birthdate', 'contact', 'email'];
+foreach ($required_fields as $field) {
+    if (!isset($_POST[$field]) || trim($_POST[$field]) === '') {
+        throw new Exception("$field is required");
+    }
+}
 
-        // Validate gender enum
-        if (!in_array($_POST['gender'], ['Male', 'Female', 'Other'])) {
-            throw new Exception('Invalid gender');
-        }
+// Prepare SQL fields without department or status
+$sql_fields = "t_fname = ?, t_lname = ?, t_mname = ?, t_suffix = ?,
+    t_gender = ?, t_bdate = ?, t_cnum = ?, t_email = ?";
 
-        // Validate status enum
-        $status = $_POST['status'] ?? 'active';
-        if (!in_array($status, ['active', 'inactive'])) {
-            $status = 'active';
-        }
+$params = [
+    $_POST['firstname'],
+    $_POST['lastname'],
+    $_POST['middlename'] ?? '',
+    $_POST['suffix'] ?? '',
+    $_POST['gender'],
+    $_POST['birthdate'],
+    $_POST['contact'],
+    $_POST['email']
+];
 
-        // Validate email format
-        if (!filter_var($_POST['email'], FILTER_VALIDATE_EMAIL)) {
-            throw new Exception('Invalid email format');
-        }
+$types = "ssssssss"; // 8 fields
 
-        $params = [
-            $_POST['firstname'],
-            $_POST['lastname'],
-            $_POST['middlename'] ?? '',
-            $_POST['suffix'] ?? '',
-            $_POST['gender'],
-            $_POST['birthdate'],
-            $_POST['contact'],
-            $_POST['email'],
-            $_POST['department'],
-            $status
-        ];
-        
-        $types = "ssssssssss";
-        $sql_fields = "t_fname = ?, t_lname = ?, t_mname = ?, t_suffix = ?,
-            t_gender = ?, t_bdate = ?, t_cnum = ?, t_email = ?,
-            t_department = ?, t_status = ?";
+// If password is provided
+if (!empty($_POST['password'])) {
+    $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+    $sql_fields .= ", t_password = ?";
+    $types .= "s";
+    $params[] = $hashed_password;
+}
 
-        // If password is provided, add it to the query
-        if (!empty($_POST['password'])) {
-            $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-            $sql_fields .= ", t_password = ?";
-            $types .= "s";
-            $params[] = $hashed_password;
-        }
+// Add user ID at the end
+$params[] = $_SESSION['user_id'];
+$types .= "i";
 
-
-        // Add user ID at the end
-        $params[] = $_SESSION['user_id'];
-        $types .= "i";
-
-        $sql = "UPDATE teachers SET " . $sql_fields . " WHERE t_id = ?";
+$sql = "UPDATE teachers SET " . $sql_fields . " WHERE t_id = ?";
 
         // Debug log
         error_log("SQL Query: " . $sql);

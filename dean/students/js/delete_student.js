@@ -1,53 +1,99 @@
-$(document).ready(function() {
-    // Delete student handler using event delegation
-    $(document).on('click', '.btn-delete-student', function(e) {
+$(document).ready(function () {
+    $(document).on("click", ".btn-delete-student", function (e) {
         e.preventDefault();
-        const studentId = $(this).data('student-id');
-        
-        if (confirm('Are you sure you want to delete this student?')) {
-            $.ajax({
-                url: '/Project/dean/students/processes/delete_student.php',
-                type: 'POST',
-                data: { s_id: studentId },
-                dataType: 'json'
-            })
-            .done(function(response) {
-                if (response.success) {
-                    // Remove the row with animation
-                    $(`tr[data-student-id="${studentId}"]`).fadeOut(300, function() {
-                        $(this).remove();
-                        // Show success message
-                        showAlert('success', response.message);
-                        // Check if table is empty
-                        if ($('#studentsTableBody tr').length === 0) {
-                            $('#studentsTableBody').html('<tr><td colspan="13" class="text-center">No students found</td></tr>');
-                        }
-                    });
-                } else {
-                    showAlert('error', response.message || 'Failed to delete student');
-                }
-            })
-            .fail(function(xhr) {
-                console.error('Delete failed:', xhr.responseText);
-                showAlert('error', 'Failed to delete student');
+
+        // get the currently active row in the table
+        const $activeRow = $("#studentsTable tbody tr.active-row");
+        if (!$activeRow.length) {
+            Swal.fire({
+                icon: "warning",
+                title: "No Student Selected",
+                text: "Please select a student first.",
             });
+            return;
         }
+
+        const studentId = $activeRow.data("student-id");
+        if (!studentId) {
+            Swal.fire({
+                icon: "error",
+                title: "Invalid ID",
+                text: "Invalid student ID.",
+            });
+            return;
+        }
+
+        // ✅ SweetAlert2 confirm dialog
+        Swal.fire({
+            title: "Are you sure?",
+            text: "This action cannot be undone.",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#d33",
+            cancelButtonColor: "#6c757d",
+            confirmButtonText: "Yes, delete it!"
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $.ajax({
+                    url: "/dean/students/processes/delete_student.php",
+                    type: "POST",
+                    data: { s_id: studentId },
+                    dataType: "json"
+                }).done(function (res) {
+                    if (res.success) {
+                        showAlert("success", res.message);
+
+                        // remove the row from the table
+                        $activeRow.fadeOut(400, function () {
+                            $(this).remove();
+
+                            // Reset detail panel
+                            $('#studentDetailsContent').addClass('d-none');
+                            $('#noStudentSelected').show();
+                        });
+
+                    } else {
+                        showAlert("error", res.message);
+                    }
+                });
+            }
+        });
     });
 
-    // Helper function to show alerts
+    $activeRow.fadeOut(400, function () {
+    $(this).remove();
+
+    // Reset detail panel
+    $('#studentDetailsContent').addClass('d-none');
+    $('#noStudentSelected').show();
+
+    // ✅ Update unassigned counters
+    updateUnassignedCounters();
+});
+
+// Function to recalc unassigned counts
+function updateUnassignedCounters() {
+    // Example: recalc number of rows still in the table that are unassigned
+    const unassignedCount = $("#studentsTable tbody tr").filter(function() {
+        // Assuming you mark unassigned rows with a class 'unassigned'
+        return $(this).hasClass("unassigned");
+    }).length;
+
+    // Update the counter element
+    $("#unassignedCounter").text(unassignedCount);
+}
+
+
+    // ✅ SweetAlert2 toast
     function showAlert(type, message) {
-        const icon = type === 'success' ? 'check-circle-fill' : 'exclamation-circle-fill';
-        const alertHtml = `
-            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                <i class="bi bi-${icon} me-2"></i>
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-        `;
-        
-        $('#alertContainer').html(alertHtml);
-        setTimeout(() => {
-            $('.alert').fadeOut('slow', function() { $(this).remove(); });
-        }, 3000);
+        Swal.fire({
+            icon: type, // 'success' | 'error' | 'warning' | 'info'
+            title: type === "success" ? "Success!" : "Error!",
+            text: message,
+            timer: 3000,
+            showConfirmButton: false,
+            toast: true,
+            position: "top-end"
+        });
     }
 });

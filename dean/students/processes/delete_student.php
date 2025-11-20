@@ -36,4 +36,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['s_id']) && is_numeric
 
 echo json_encode($response);
 ?>
-w

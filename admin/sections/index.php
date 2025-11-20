@@ -261,24 +261,83 @@ while ($section = $all_sections_result->fetch_assoc()) {
 <!-- Sections Tab -->
 <div class="tab-pane fade" id="sectionsTabContent" role="tabpanel" aria-labelledby="sections-tab">
 <!-- Filters Row -->
-<!-- Filters Row -->
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div class="d-flex align-items-center gap-2">
-        <label for="degreeFilter" class="form-label mb-0">Filter by Degree:</label>
-        <select id="degreeFilter" class="form-select w-auto">
-            <option value="" selected>All Degrees</option>
-            <?php foreach ($degrees as $degree): ?>
-                <option value="<?php echo htmlspecialchars($degree['degree_code']); ?>">
-                    <?php echo htmlspecialchars($degree['degree_code'] . ' - ' . $degree['degree_name']); ?>
-                </option>
-            <?php endforeach; ?>
-        </select>
+        <div class="position-relative">
+            <!-- Filter icon inside select -->
+            <span 
+                style="
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    bottom: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: var(--primary);
+                    color: var(--tertiary);
+                    border-top-left-radius: 8px;
+                    border-bottom-left-radius: 8px;
+                    width: 38px;
+                ">
+                <i class="fa-solid fa-filter"></i>
+            </span>
+
+            <select id="degreeFilter" class="form-select ps-5 w-auto" 
+                    style="border: 1px solid #033A70; border-radius: 8px; height: 50px;">
+                <option value="" selected>All Degrees</option>
+                <?php foreach ($degrees as $degree): ?>
+                    <option value="<?php echo htmlspecialchars($degree['degree_code']); ?>">
+                        <?php echo htmlspecialchars($degree['degree_code'] . ' - ' . $degree['degree_name']); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
     </div>
 
-    <div class="d-flex align-items-center gap-2">
-        <label for="searchInput" class="form-label mb-0">Search:</label>
-        <input type="text" id="searchInput" class="form-control" placeholder="Search sections...">
-    </div>
+<div class="position-relative d-flex align-items-center" style="width: 100%; max-width: 400px;">
+  <!-- Search icon inside input -->
+  <span id="search-icon" 
+        style="
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          display: flex; 
+          align-items: center; 
+          justify-content: center; 
+          background: var(--primary); 
+          color: var(--tertiary); 
+          border-top-left-radius: 8px;
+          border-bottom-left-radius: 8px;
+          width: 38px;
+        ">
+    <i class="fa-brands fa-searchengin fa-lg"></i>
+  </span>
+
+  <!-- Input -->
+  <input 
+    type="text" 
+    id="searchInput" 
+    class="form-control ps-5 " 
+    placeholder="Search..."
+    style="
+      border: 1px solid #033A70; 
+      border-radius: 8px; 
+      height: 50px;
+    "
+  >
+
+  <!-- Clear button -->
+  <button 
+    type="button" 
+    id="clearSearch" 
+    class="btn-close position-absolute end-0 top-50 translate-middle-y me-2" 
+    aria-label="Clear search" 
+    style="display:none; width: 38px; height: 50px; font-size: 0.8rem;">
+  </button>
+</div>
+
 </div>
 
 
@@ -427,6 +486,9 @@ if ($active_term) {
                     <i class="bi bi-people-fill"></i> Show Students
                 </button>
          </div>
+         <script>
+            window.activeTermId = <?php echo json_encode($active_term_id); ?>;
+         </script>
         </div>
     </div>
 <?php } ?>
@@ -590,41 +652,47 @@ if ($active_term) {
         </div>
     </div>
 
-    <!-- Transfer Student Modal -->
-    <div class="modal fade" id="transferStudentModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Transfer Student</h5>
-                           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                </div>
-               <form id="transferStudentForm">
-    <div class="modal-body">
-        <input type="hidden" name="student_id" id="transferStudentId">
-        <input type="hidden" name="new_section_code" id="newSectionCode">
-        
-        <div id="transferStudentInfo" class="mb-3"></div>
-        <div class="mb-3">
-            <label for="newSectionSelect" class="form-label">Select New Section</label>
-            <select name="new_section_id" class="form-select" required id="newSectionSelect">
-                <option value="">Choose a section...</option>
-                <?php foreach($all_sections as $section): ?>
-                    <option value="<?php echo $section['section_id']; ?>" 
-                            data-degree-code="<?php echo $section['degree_code']; ?>"
-                            data-section-code="<?php echo $section['section_code']; ?>">
-                        <?php echo $section['section_code']; ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-    </div>
-    <div class="modal-footer">
-        <button type="submit" class="btn btn-primary" data-student-id="<?php echo htmlspecialchars($student['s_id']); ?>">Transfer Student</button>
-    </div>
-</form>
+   <!-- Transfer Student Modal -->
+<div class="modal fade" id="transferStudentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Transfer Student</h5>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
             </div>
+
+            <form id="transferStudentForm">
+                <div class="modal-body">
+                    <!-- ✅ Hidden fields -->
+                    <input type="hidden" name="student_id" id="transferStudentId">
+                    <input type="hidden" name="old_section_id" id="transferOldSectionId"> <!-- ✅ Added -->
+                    <input type="hidden" name="new_section_code" id="newSectionCode">
+
+                    <div id="transferStudentInfo" class="mb-3"></div>
+
+                    <div class="mb-3">
+                        <label for="newSectionSelect" class="form-label">Select New Section</label>
+                        <select name="new_section_id" class="form-select" required id="newSectionSelect">
+                            <option value="">Choose a section...</option>
+                            <?php foreach ($all_sections as $section): ?>
+                                <option value="<?php echo $section['section_id']; ?>"
+                                        data-degree-code="<?php echo $section['degree_code']; ?>"
+                                        data-section-code="<?php echo $section['section_code']; ?>">
+                                    <?php echo $section['section_code']; ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Transfer Student</button>
+                </div>
+            </form>
         </div>
     </div>
+</div>
+
 
     <!-- Assign Advisor Modal -->
     <div class="modal fade" id="assignAdvisorModal" tabindex="-1">
@@ -689,6 +757,18 @@ if ($active_term) {
     margin: 0;
     padding: 0;
 }
+
+#clearSearch {
+
+  width: 0.75rem;
+  height: 0.75rem;
+  opacity: 0.6;
+}
+#clearSearch:hover {
+  opacity: 1;
+}
+
+
 .card-body,table{
     overflow: hidden;
 }
@@ -921,47 +1001,118 @@ $(document).ready(function () {
 });
 
 document.addEventListener('DOMContentLoaded', function () {
-    const degreeFilter = document.getElementById('degreeFilter');
-    const searchInput = document.getElementById('searchInput');
-    const sectionCards = document.querySelectorAll('.section-card');
-    const noSectionsAlert = document.getElementById('noSectionsAlert');
+  const degreeFilter = document.getElementById('degreeFilter');
+  const searchInput = document.getElementById('searchInput');
+  const sectionCards = document.querySelectorAll('.section-card');
+  const sectionsContainer = document.getElementById('sectionsContainer');
+  const noSectionsAlert = document.getElementById('noSectionsAlert');
 
-    function filterSections() {
-        const degreeValue = degreeFilter.value.toLowerCase().trim();
-        const searchValue = searchInput.value.toLowerCase().trim();
-        let visibleCount = 0;
+  // === Create a clear (×) button dynamically ===
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.id = 'clearSearch';
+  clearBtn.className = 'btn-close position-absolute end-0 top-50 translate-middle-y me-2';
+  clearBtn.setAttribute('aria-label', 'Clear search');
+  clearBtn.style.display = 'none';
+  clearBtn.style.fontSize = '0.6rem';
+  clearBtn.style.opacity = '0.6';
+  clearBtn.style.width = '0.75rem';
+  clearBtn.style.height = '0.75rem';
 
-        sectionCards.forEach(card => {
-            const degreeCode = (card.dataset.degree || '').toLowerCase();
-            const sectionText = card.textContent.toLowerCase();
-            const termId = card.dataset.termId ? card.dataset.termId.trim() : '';
+  // Insert clear button next to search input
+  const parent = searchInput.parentElement;
+  parent.style.position = 'relative';
+  searchInput.classList.add('pe-5');
+  parent.appendChild(clearBtn);
 
-            // ✅ Match degree, search, and ensure term_id exists
-            const matchesDegree = !degreeValue || degreeCode === degreeValue;
-            const matchesSearch = !searchValue || sectionText.includes(searchValue);
-            const validTerm = termId !== '';
+  // === Filtering Function ===
+  function filterSections() {
+    const degreeValue = degreeFilter.value.toLowerCase().trim();
+    const searchValue = searchInput.value.toLowerCase().trim();
+    let visibleCount = 0;
 
-            if (matchesDegree && matchesSearch && validTerm) {
-                card.style.display = '';
-                visibleCount++;
-            } else {
-                card.style.display = 'none';
-            }
-        });
+    sectionCards.forEach(card => {
+      const degreeCode = (card.dataset.degree || '').toLowerCase();
+      const sectionText = card.textContent.toLowerCase();
+      const termId = card.dataset.termId ? card.dataset.termId.trim() : '';
 
-        // Toggle alert visibility
-        if (noSectionsAlert) {
-            noSectionsAlert.style.display = visibleCount === 0 ? 'block' : 'none';
-        }
+      const matchesDegree = !degreeValue || degreeCode === degreeValue;
+      const matchesSearch = !searchValue || sectionText.includes(searchValue);
+      const validTerm = termId !== '';
+
+      if (matchesDegree && matchesSearch && validTerm) {
+        card.style.display = '';
+        visibleCount++;
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    // Toggle alert visibility
+    if (noSectionsAlert) {
+      noSectionsAlert.style.display = visibleCount === 0 ? 'block' : 'none';
     }
 
-    // Event listeners
-    degreeFilter.addEventListener('change', filterSections);
-    searchInput.addEventListener('input', filterSections);
+    // Toggle visibility of clear (×) button
+    clearBtn.style.display = searchValue ? 'block' : 'none';
 
-    // Run filter once on load
-    filterSections();
+    // Update visible count badge
+   // --- Counter Badge (always above alert) ---
+let countBadge = document.getElementById('visibleCountBadge');
+if (!countBadge) {
+    countBadge = document.createElement('div');
+    countBadge.id = 'visibleCountBadge';
+    countBadge.className = 'badge bg-primary mb-2 p-2 fs-6';
+    sectionsContainer.parentNode.insertBefore(countBadge, sectionsContainer);
+}
+countBadge.textContent = `Showing ${visibleCount} ${visibleCount === 1 ? 'Section' : 'Sections'}`;
+  }
+
+  // === Event Listeners ===
+  degreeFilter.addEventListener('change', filterSections);
+  searchInput.addEventListener('input', filterSections);
+
+  // Clear input when X clicked
+  clearBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    clearBtn.style.display = 'none';
+    searchInput.focus();
+    filterSections(); // ✅ re-show all sections
+  });
+
+  // === Run once on load ===
+  filterSections();
 });
+
+
+
+// ------------------ Fetch updated student count from server ------------------
+function refreshSectionCount(sectionId, termId) {
+  // Convert safely to integer
+  sectionId = parseInt(sectionId);
+  termId = parseInt(termId);
+
+  console.log('refreshSectionCount → section_id:', sectionId, 'term_id:', termId);
+
+  // Prevent invalid calls
+  if (isNaN(sectionId) || isNaN(termId)) {
+    console.warn('⚠️ Missing section_id or term_id');
+    return;
+  }
+
+  fetch(`/admin/sections/processes/get_student_count.php?section_id=${sectionId}&term_id=${termId}`)
+    .then(res => res.json())
+    .then(data => {
+      console.log('✅ Updated count:', data);
+      const badge = document.querySelector(`.section-count[data-section-id="${sectionId}"]`);
+      if (badge) {
+        badge.dataset.studentsCount = data.count;
+        badge.dataset.updatedAt = data.updated_at;
+        badge.textContent = data.text;
+      }
+    })
+    .catch(err => console.error('❌ Error refreshing section count:', err));
+}
 $(document).ready(function() {
     const $addForm = $('#addSectionForm');
     const $sectionsContainer = $('#sectionsContainer');
@@ -1218,6 +1369,8 @@ if (assignAdvisorModal) {
     }
 });
 
+
+
 // =================== Update Section ===================
 $(document).ready(function() {
     // Initialize Bootstrap modals
@@ -1404,42 +1557,81 @@ editSectionModal.addEventListener('hidden.bs.modal', function() {
 
 });
 
-document.getElementById('uploadStudentsForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    let formData = new FormData(this);
 
-    fetch('/admin/sections/processes/upload_data.php', {
-        method: 'POST',
-        body: formData
-    })
+// ================= Upload Students Form =================
+document.getElementById('uploadStudentsForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  const formData = new FormData(this);
+  let sectionId = parseInt(formData.get('section_id')) || null;
+  const termId = parseInt(window.activeTermId);
+
+  fetch('/admin/sections/processes/upload_data.php', {
+    method: 'POST',
+    body: formData
+  })
     .then(res => res.json())
     .then(data => {
-        let div = document.getElementById('uploadResult');
-        if (data.success) {
-            let html = `<div class="alert alert-success">
-                            ${data.message}<br>
-                            Assigned: ${data.assigned}, Skipped: ${data.skipped}
-                        </div>`;
+      const div = document.getElementById('uploadResult');
+      let html = '';
 
-            // Show skipped students with reasons if any
-            if (data.skipped_students && data.skipped_students.length > 0) {
-                html += `<div class="alert alert-warning">
-                            <strong>Skipped Students:</strong><br>
-                            <ul>`;
-                data.skipped_students.forEach(s => {
-                    html += `<li>${s.id_code} - ${s.name} : ${s.reason}</li>`;
-                });
-                html += `</ul></div>`;
-            }
+      if (data.success) {
+        if (data.section_id) sectionId = parseInt(data.section_id);
 
-            div.innerHTML = html;
-        } else {
-            div.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+        html = `
+          <div class="alert alert-success">
+            ${data.message}<br>
+            Assigned: ${data.assigned}, Skipped: ${data.skipped}
+          </div>
+        `;
+        console.log('✅ Upload success:', { sectionId, termId });
+
+        // ✅ Always refresh actual count from DB (avoids duplicates)
+        if (!isNaN(sectionId) && !isNaN(termId)) {
+          console.log('🔄 Refreshing true section count...');
+          refreshSectionCount(sectionId, termId);
         }
+
+        // ✅ Show skipped students list
+        if (data.skipped_students?.length) {
+          html += `
+            <div class="alert alert-warning mt-2">
+              <strong>Skipped Students:</strong>
+              <ul class="mb-0">
+                ${data.skipped_students
+                  .map(
+                    (s) => `<li>${s.id_code} - ${s.name}: ${s.reason}</li>`
+                  )
+                  .join('')}
+              </ul>
+            </div>
+          `;
+        }
+      } else {
+        html = `<div class="alert alert-danger">${data.message}</div>`;
+      }
+
+      div.innerHTML = html;
+
+      // ✅ Auto-refresh form after 5 seconds
+      setTimeout(() => {
+        console.log('🔁 Auto-refreshing form after 5 seconds...');
+        document.getElementById('uploadStudentsForm').reset(); // clear form
+        div.innerHTML = ''; // clear messages
+      }, 5000);
     })
-    .catch(err => {
-        document.getElementById('uploadResult').innerHTML = `<div class="alert alert-danger">Error uploading file</div>`;
-        console.error(err);
+    .catch((err) => {
+      console.error('❌ Upload error:', err);
+      const div = document.getElementById('uploadResult');
+      div.innerHTML = `
+        <div class="alert alert-danger">Error uploading file</div>
+      `;
+
+      // ✅ Auto-refresh form even on error
+      setTimeout(() => {
+        console.log('🔁 Auto-refreshing form after error (5 seconds)...');
+        document.getElementById('uploadStudentsForm').reset();
+        div.innerHTML = '';
+      }, 5000);
     });
 });
 
@@ -1481,6 +1673,7 @@ $(document).on('click', '.view-students-btn', function() {
                                         data-student-id="${s.s_id}"
                                         data-student-name="${s.s_lname}, ${s.s_fname}"
                                         data-current-section="${sectionCode}"
+                                        data-current-section-id="${s.section_id}"
                                         data-degree-code="${s.degree_code}">
                                     Transfer
                                 </button>
@@ -1536,21 +1729,19 @@ $(document).on('click', '.view-students-btn', function() {
     });
 });
 
-
-
-
 // =================== Transfer Student ===================
-$(document).on('click', '.edit-student-btn', function() {
+$(document).on('click', '.edit-student-btn', function () {
     const studentId = $(this).data('student-id');
     const studentName = $(this).data('student-name');
     const currentSection = $(this).data('current-section');
     const degreeCode = $(this).data('degree-code');
+    const oldSectionId = $(this).data('current-section-id'); // ✅ ensure this exists in your button
 
     // Hide the view modal (but keep background)
     const viewModal = bootstrap.Modal.getInstance($('#viewStudentsModal'));
     if (viewModal) viewModal.hide();
 
-    // Fill student info
+    // Fill student info in modal
     $('#transferStudentId').val(studentId);
     $('#transferStudentInfo').html(`
         <p><strong>Student:</strong> ${studentName}</p>
@@ -1558,21 +1749,24 @@ $(document).on('click', '.edit-student-btn', function() {
         <p><strong>Degree Program:</strong> ${degreeCode}</p>
     `);
 
+    // ✅ Set hidden old_section_id value for payload
+    $('#transferOldSectionId').val(oldSectionId);
+
+    console.log('🔹 old_section_id set to:', oldSectionId);
+
+    // Populate new section dropdown
     const $sectionSelect = $('#newSectionSelect');
     $sectionSelect.empty(); // Clear old options
-
-    // Add default option first
     $sectionSelect.append('<option value="">Choose a section...</option>');
 
     // Extract year level from currentSection (e.g., BSIT 1A → 1)
     const yearMatch = currentSection.match(/\d+/);
     const currentYear = yearMatch ? parseInt(yearMatch[0]) : null;
-
     let validCount = 0;
 
     // Generate section options dynamically from PHP-rendered list
     <?php foreach ($all_sections as $section): ?>
-        (function() {
+        (function () {
             const sectionId = '<?php echo $section['section_id']; ?>';
             const sectionCode = '<?php echo $section['section_code']; ?>';
             const sectionDegree = '<?php echo $section['degree_code']; ?>';
@@ -1596,15 +1790,16 @@ $(document).on('click', '.edit-student-btn', function() {
         })();
     <?php endforeach; ?>
 
-    // If no valid sections, replace list with one disabled message
+    // If no valid sections found, show placeholder
     if (validCount === 0) {
-        $sectionSelect.html('<option value="" disabled selected>No other available sections for this year level.</option>');
+        $sectionSelect.html(
+            '<option value="" disabled selected>No other available sections for this year level.</option>'
+        );
     }
 
-    // Show transfer modal
+    // Show the transfer modal
     new bootstrap.Modal('#transferStudentModal').show();
 });
-
 
 // =================== Transfer Student Form ===================
 $('#transferStudentForm').on('submit', function (e) {
@@ -1614,7 +1809,7 @@ $('#transferStudentForm').on('submit', function (e) {
     const plainForm = Object.fromEntries(formData.entries());
     plainForm.student_id = parseInt(plainForm.student_id);
     plainForm.new_section_id = parseInt(plainForm.new_section_id);
-    plainForm.current_section_id = parseInt(plainForm.current_section_id);
+    plainForm.old_section_id = parseInt(plainForm.old_section_id);
     plainForm.student_name = $('#transferStudentInfo p:first').text().replace('Student: ', '');
 
     if (!plainForm.new_section_id || isNaN(plainForm.new_section_id)) {
@@ -1641,42 +1836,12 @@ $('#transferStudentForm').on('submit', function (e) {
 
             showAlert('success', 'Student has been successfully transferred.');
 
-            // Helper to update a section card (badge + body) with animation
-            const updateSectionCard = (sectionId, delta) => {
-                const $counter = $('.section-count[data-section-id="' + sectionId + '"]');
-                if ($counter.length) {
-                    // Animate count
-                    let currentCount = parseInt($counter.data('students-count')) || 0;
-                    let newCount = Math.max(currentCount + delta, 0);
-                    $counter.data('students-count', newCount);
+          console.log('Form data:', plainForm);
 
-                    // Animate number change
-                    $({ countNum: currentCount }).animate({ countNum: newCount }, {
-                        duration: 400,
-                        easing: 'swing',
-                        step: function(now) {
-                            $counter.text(Math.floor(now) + (Math.floor(now) === 1 ? ' Student' : ' Students'));
-                        },
-                        complete: function() {
-                            $counter.text(newCount + (newCount === 1 ? ' Student' : ' Students'));
-                        }
-                    });
+            // ✅ Refresh both sections with real-time count
+           refreshSectionCount(plainForm.old_section_id, window.activeTermId);
+            refreshSectionCount(plainForm.new_section_id, window.activeTermId);
 
-                    // Update card body placeholder
-                    const $cardBody = $counter.closest('.card').find('.card-body');
-                    if ($cardBody.length) {
-                        if (newCount === 0) {
-                            $cardBody.html('<p class="text-center text-info">0 Student</p>');
-                        } else if ($cardBody.find('p.text-center').length) {
-                            $cardBody.html(''); // remove placeholder if students exist
-                        }
-                    }
-                }
-            };
-
-            // Decrease old section, increase new section
-            updateSectionCard(plainForm.current_section_id, -1);
-            updateSectionCard(plainForm.new_section_id, 1);
 
         } else {
             showAlert('danger', data.message || 'Failed to transfer student.');
@@ -1723,13 +1888,8 @@ $(document).on('click', '.remove-student-btn', function() {
             .then(data => {
                 if (data.success) {
                     // ✅ Update counter immediately
-                    const $counter = $('.section-count[data-section-id="' + sectionId + '"]');
-                    if ($counter.length) {
-                        let count = parseInt($counter.data('students-count')) || 0;
-                        count = Math.max(count - 1, 0);
-                        $counter.data('students-count', count);
-                        $counter.text(count + (count === 1 ? ' Student' : ' Students'));
-                    }
+                    // ✅ Fetch accurate count after deletion
+                    refreshSectionCount(sectionId, window.activeTermId);
 
                     // ✅ Close modal
                     const viewModalEl = $('#viewStudentsModal');

@@ -56,14 +56,14 @@ switch($page) {
         $content = 'upload_data/index.php';
         $title = 'Upload Data';
         break;
-    case 'generateqr':
-        $content = 'generateqr/index.php';
-        $title = 'Generate QR Codes';
-        break;
-    // case 'archives':
-    //     $content = 'archives/index.php';
-    //     $title = 'Archives';
+    // case 'generateqr':
+    //     $content = 'generateqr/index.php';
+    //     $title = 'Generate QR Codes';
     //     break;
+    case 'reports':
+        $content = 'reports/index.php';
+        $title = 'Attendance Reports';
+        break;
     default:
         $content = 'dashboard/index.php';
         $title = 'Dashboard';
@@ -75,15 +75,18 @@ switch($page) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - <?php echo $title; ?></title>
-    
-    <!-- Bootstrap CSS -->
+          <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <!-- DataTables CSS -->
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/responsive/2.2.9/css/responsive.bootstrap5.min.css">
-    
+     <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;700&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+      <!-- Font Awesome CDN (version 5 or 6) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" integrity="sha512-..." crossorigin="anonymous" referrerpolicy="no-referrer" />
+
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <!-- Bootstrap JS -->
@@ -93,8 +96,8 @@ switch($page) {
     <script type="text/javascript" src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/responsive/2.2.9/js/dataTables.responsive.min.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/responsive/2.2.9/js/responsive.bootstrap5.min.js"></script>
-    <meta name="base-url" content="/Project/admin">
-    <style>
+    <meta name="base-url" content="../admin">
+<style>
         :root {
     --primary: #033A70;
     --secondary: #033A70;
@@ -105,8 +108,10 @@ switch($page) {
     --sidebar-width: 250px;
     --card-border-radius: 0.75rem;
     --transition-speed: 0.3s;
-     --hover-blue: #3E7DCA;
 }
+*{
+            font-family: 'Baloo 2', 'Nunito', 'Poppins', sans-serif;
+        }
         body{
             overflow-x: hidden;
             overflow-y: visible;
@@ -127,12 +132,35 @@ switch($page) {
             overflow-y: auto;
         }
         
-        .sidebar-header {
-            padding: 1.5rem 1.5rem 2rem;
-            text-align: center;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            margin-bottom: 0.5rem;
-        }
+         /* Sidebar header centered */
+.sidebar-header {
+    display: flex;
+    flex-direction: column; /* Stack items vertically */
+    align-items: center;    /* Center horizontally */
+    justify-content: center; /* Center vertically */
+    text-align: center;     /* Ensure text inside is centered */
+}
+
+/* Avatar circle */
+.profile-image2 {
+    width: 85px;
+    height: 85px;
+    border: 4px solid white;
+    background: linear-gradient(145deg, var(--secondary) 0%, var(--primary) 100%);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.8rem;
+    font-weight: 600;
+    margin-bottom: 10px; /* Space below avatar */
+}
+
+
+        
+      
 
         .sidebar-header h3 {
             font-size: 1.5rem;
@@ -350,9 +378,8 @@ switch($page) {
         }
         
         .card-header {
-            color:whitesmoke;
-             background: #033A70;
-            background: linear-gradient(135deg, var(--primary), var(--hover-blue));
+            background: var(--primary);
+            color: var(--tertiary);
             border-radius: var(--card-border-radius) var(--card-border-radius) 0 0 !important;
             padding: 1rem 1.5rem;
         }
@@ -360,7 +387,6 @@ switch($page) {
             max-height: 100vh;
             overflow-y: visible;
             overflow-x: hidden;
-             border:none !important;
         }
         /* Hide horizontal scrollbar */
 .dataTables_wrapper {
@@ -368,23 +394,25 @@ switch($page) {
 }
 
 
+        .btn-primary {
+            border-radius: 8px;
+            padding: 0.5rem 1.25rem;
+            font-weight: 500;
+            transition: all var(--transition-speed);
+            position: relative;
+            overflow: hidden;
+        }
 
-       
-         .btn-primary {
-      background: linear-gradient(135deg, var(--primary), var(--hover-blue));
-      color: white;
-      border: none;
-      width: 100%;
-      padding: 12px;
-      border-radius: 8px;
-      font-weight: 600;
-      transition: 0.3s;
-    }
+        .btn-primary {
+            background: linear-gradient(145deg, var(--primary) 0%, var(--secondary) 100%);
+            border: none;
+        }
 
-    .btn-primary:hover {
-      background: var(--hover-blue);
-    }
-
+        .btn-primary:hover {
+            background: linear-gradient(145deg, var(--secondary) 0%, var(--primary) 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(61, 82, 160, 0.2);
+        }
 
         .btn-primary::after {
             content: '';
@@ -605,10 +633,10 @@ switch($page) {
                             <i class="bi bi-person"></i>
                             <span>Parents</span>
                         </a>
-                        <a href="?page=generateqr" class="<?php echo $page === 'generateqr' ? 'active' : ''; ?>">
+                        <!-- <a href="?page=generateqr" class="<?php echo $page === 'generateqr' ? 'active' : ''; ?>">
                         <i class="qr"></i>
                         <span>Generate QR</span>
-                    </a>
+                    </a> -->
                     </div>
                 </div>
 
@@ -645,6 +673,15 @@ switch($page) {
                     </a> -->
                 </div>
 
+                <!-- Other Management Section -->
+                <div class="nav-section">
+                    <div class="nav-section-label">Attendance Reports</div>
+                    <a href="?page=reports" class="<?php echo $page === 'reports' ? 'active' : ''; ?>">
+                         <i class="bi bi-file-earmark-text me-2"></i>
+                        <span>Reports</span>
+                    </a>
+                </div>
+
                 <!-- Footer -->
                 <div class="sidebar-footer">
                     <a href="logout.php">
@@ -668,7 +705,12 @@ switch($page) {
     </div>
 
 
-    <script src="https://cdn.jsdelivr.net/npm/sweetshowAlert2@11"></script>
+     <!-- SweetAlert2 CSS -->
+<link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+
+<!-- SweetAlert2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css" integrity="sha512-2SwdPD6INVrV/lHTZbO2nodKhrnDdJK9/kg2XD1r9uGqPo1cUbujc+IYdlYdEErWNu69gVcYgdxlmVmzTWnetw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
   <script>

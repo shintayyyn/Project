@@ -1,247 +1,110 @@
-<?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+  <?php
+  error_reporting(1);
+
+  if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'dean') {
+      header("Location:  /dean/login.php");
+      exit;
+  }
+
+  require_once __DIR__ . '/../../includes/db.php';
+
+  $base_url = '/dean/teachers/processes';
+  $search = isset($_GET['search']) ? $_GET['search'] : '';
+  $search_condition = $search ? "WHERE t_fname LIKE '%$search%' OR t_lname LIKE '%$search%' OR t_id LIKE '%$search%'" : '';
+
+
+  $dean_id = intval($_SESSION['t_id']);
+
+// Fetch degrees assigned to the dean
+$degree_ids = [];
+$stmt = $conn->prepare("SELECT degree_id FROM degrees WHERE dean_id = ?");
+$stmt->bind_param("i", $dean_id);
+$stmt->execute();
+$res = $stmt->get_result();
+
+while ($row = $res->fetch_assoc()) {
+    $degree_ids[] = intval($row['degree_id']);
 }
+$stmt->close();
 
-// Simulate login for testing (remove in production)
-$_SESSION['user_type'] = 'dean';
+// Prevent SQL error if no assigned degrees
+$degree_list = !empty($degree_ids) ? implode(",", $degree_ids) : "0";
 
-// Protect this page: Allow only dean users
-if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'dean') {
-    header("Location: /Project/login.php");
-    exit();
-}
+  // Fetch Departments
+  $departments = [];
+  $result = $conn->query("SELECT degree_id, degree_name FROM degrees ORDER BY degree_name");
+  if ($result) {
+      while ($row = $result->fetch_assoc()) {
+          $departments[] = $row;
+      }
+  }
 
-require_once __DIR__ . '/../../includes/db.php';
-
-$base_url = '/Project/dean/teachers/processes';
-
-// Get current dean ID
-$dean_id = $_SESSION['t_id'] ?? null;
-if (!$dean_id) {
-    die('Dean ID not found in session.');
-}
-
-// Get the department of the dean
-$dept_stmt = $conn->prepare("SELECT t_department FROM teachers WHERE t_id = ?");
-$dept_stmt->bind_param("i", $dean_id);
-$dept_stmt->execute();
-$dept_result = $dept_stmt->get_result();
-
-if ($dept_result->num_rows === 0) {
-    die('Dean record not found.');
-}
-
-$dean = $dept_result->fetch_assoc();
-$dean_department = $conn->real_escape_string($dean['t_department']);
-$dept_stmt->close();
-
-// Handle search query
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
-$search_condition = "WHERE t.t_department = '$dean_department'";
-
-if ($search !== '') {
-    $safe_search = $conn->real_escape_string($search);
-    $search_condition .= " AND (
-        t.t_fname LIKE '%$safe_search%' OR
-        t.t_lname LIKE '%$safe_search%' OR
-        t.t_id LIKE '%$safe_search%'
-    )";
-}
-
-// Final SQL query
+  // Fetch Teachers
 $sql = "
-    SELECT t.*, CONCAT(t.t_fname, ' ', IFNULL(t.t_mname, ''), ' ', t.t_lname, ' ', IFNULL(t.t_suffix, '')) AS full_name,
-           t.t_password
-    FROM teachers t 
+    SELECT 
+        t.*, 
+        d.degree_code AS department_name,
+        t.t_status
+    FROM teachers t
+    LEFT JOIN degrees d ON t.t_department = d.degree_id
+    WHERE t.t_department IN ($degree_list)
     $search_condition
-    GROUP BY t.t_id
     ORDER BY t.t_lname ASC
 ";
-
 $result = $conn->query($sql);
-?>
-
+  ?>
 
 <style>
-
-td{
-    border:none;
-}
-/* Password cell specific styles */
-.td-password {
-    position: relative;
-    padding: 0 !important;
-    text-align: center;
+.active-row {
+  background-color: #ffffffff !important;
+  transition: background-color 0.3s ease;
 }
 
-.password-wrapper {
-    position: relative;
+
+.profile-avatar {
+    background-color: #033A70;
+    color: #fff;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 24px;
-    height: 100%;
+    text-transform: uppercase;
 }
 
-.dots, .real-password {
-    display: inline-block;
+.card-body-empty {
     text-align: center;
-    width: auto;
-    margin: 0 auto;
+    padding: 40px 10px;
+    color: #666;
+    font-size: 1.1rem;
 }
 
-.eye-button {
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border: none;
-    background: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.card-body-empty i {
+    font-size: 2rem;
+    color: #aaa;
+    display: block;
+    margin-bottom: 10px;
 }
 
-/* Clean up hover states */
+.card-body, table {
+    overflow: hidden;
+}
+
 .table-hover tbody tr:hover td {
     background-color: rgba(61, 82, 160, 0.05) !important;
 }
 
-/* Add these styles */
-.alert {
-    min-width: 300px;
-    max-width: 600px;
-    border: none;
-    border-left: 4px solid;
-    text-align: center;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+.action-buttons .btn {
+    min-width: 80px;
 }
 
-.alert-success {
-    background-color: #d1e7dd;
-    border-left-color: #198754;
-    color: #0f5132;
-}
 
-@keyframes slideIn {
-    from {
-        transform: translateY(-20px);
-        opacity: 0;
-    }
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
-}
-
-.alert.fade.show {
-    animation: slideIn 0.3s ease-out;
-}
-
-/* Success message styles */
-.success-message {
-    background-color: #d1e7dd;
-    border-left: 4px solid #198754;
-    color: #0f5132;
-    padding: 12px 20px;
-    border-radius: 4px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-    font-weight: 500;
-    animation: slideDown 0.3s ease-out;
-}
-
-@keyframes slideDown {
-    from {
-        transform: translateY(-20px) translateX(-50%);
-        opacity: 0;
-    }
-    to {
-        transform: translateY(0) translateX(-50%);
-        opacity: 1;
-    }
-}
-
-/* Success message styles */
-.message-notification {
-    background-color: #d1e7dd;
-    color: #0f5132;
-    padding: 12px 24px;
-    border-radius: 4px;
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 500;
-    opacity: 0;
-    transform: translateY(-20px) translateX(-50%);
-    transition: all 0.3s ease;
-}
-
-.message-notification.show {
-    opacity: 1;
-    transform: translateY(0) translateX(-50%);
-}
-
-.message-notification i {
-    font-size: 1.2em;
-}
-
-/* Alert Modal Styles */
-#alertModal .modal-content {
-    border-width: 2px;
-}
-
-#alertModal .modal-body i {
-    display: block;
-    margin: 0 auto;
-}
-
-#alertModal .modal-header {
-    padding: 1rem 1rem 0;
-}
-
-#alertModal .btn-close:focus {
-    box-shadow: none;
-}
-
-#alertModal p {
-    color: #666;
-}
-
-/* Fix button hover effects */
-.btn-group .btn {
-    transition: background-color 0.2s ease, color 0.2s ease;
-    transform: none !important;
-}
-
-.btn-group .btn:hover {
-    transform: none !important;
-}
-
-.btn-group .btn:active {
-    transform: none !important;
-}
-
-/* Update edit button hover styles */
-.btn-edit-student:hover, .btn-edit-teacher:hover {
-    background: linear-gradient(145deg, #2E4190 0%, #6180C8 100%) !important;
-    color: white !important;
-    border: none;
-}
 </style>
-<link rel="stylesheet" href="../../assets/css/content.css">
-<script src="../../assets/js/showAlert.js"></script>
-<center>
-    <div class="container-fluid p-0">
-    <div id="messageContainer" class="position-fixed start-50 translate-middle-x" style="z-index: 1060; top: 20px;"></div>
-    <div id="notificationContainer" class="position-fixed start-50 translate-middle-x" style="z-index: 1060; top: 20px;"></div>
-    <div id="alertContainer" class="position-fixed start-50 translate-middle-x" style="z-index: 1060; top: 20px;"></div>
-    
+
+<div class="container-fluid p-0">
+
+    <!-- Notification Area -->
+    <div id="notificationArea"></div>
+
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="mb-1">Manage Teachers</h2>
@@ -252,491 +115,258 @@ td{
                 </ol>
             </nav>
         </div>
-        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTeacherModal">
+        <button type="button" class="btn btn-primary w-auto" data-bs-toggle="modal" data-bs-target="#addTeacherModal">
             <i class="bi bi-plus-lg me-2"></i>Add New Teacher
         </button>
     </div>
 
-    <!-- Search and Filter -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Teachers List</h5>
-            <form id="searchForm" class="d-flex align-items-center gap-2" style="width: 50%;">
-                <input type="hidden" name="page" value="teachers">
-                <div class="flex-grow-1">
-                    <input type="text" class="form-control" name="search" placeholder="Search by name or ID..." oninput="delayedSubmit()" value="<?php echo htmlspecialchars($search); ?>">
+    <div class="row g-3">
+        <!-- Table Column -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold">Teachers List</h5>
                 </div>
-                <button type="submit" class="btn btn-primary" style="white-space: nowrap;">Search</button>
-            </form>
-        </div>
-            <div class="table-responsive p-3">
-                <table id="teachersTable" class="table table-hover align-middle p-2">   
-                    <thead>
-                        <tr class="px-2 text-center">
-                            <th  >ID</th>
-                            <th  >Full Name</th>
-                            <th  >Gender</th>
-                            <th  >Birthdate</th>
-                            <th  >Age</th>
-                            <th  >Contact</th>
-                            <th  >Email</th>
-                            <th  >Status</th>
-                            <th >Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="teachersTableBody" class="text-center">
-                        <?php if ($result && $result->num_rows > 0): ?>
-                            <?php while($row = $result->fetch_assoc()): ?>
-                                <tr data-teacher-id="<?php echo htmlspecialchars($row['t_id']); ?>">
-                                    <td><?php echo htmlspecialchars($row['t_id']); ?></td>
-                                    <td>
-                                    <?php
-                                        $lname = htmlspecialchars($row['t_lname']);
-                                        $fname = htmlspecialchars($row['t_fname']);
-                                        $mname = $row['t_mname'] ? htmlspecialchars($row['t_mname'][0]) . '.' : '';
-                                        $suffix = htmlspecialchars($row['t_suffix'] ?? '');
-                                        echo "$lname, $fname $mname $suffix";
-                                    ?>
-                                    </td>
-                                    <td class="text-center"><?php echo htmlspecialchars($row['t_gender']); ?></td>
-                                    <td><?php echo date('Y-m-d', strtotime($row['t_bdate'])); ?></td>
-                                    <td class="text-center"><?php echo htmlspecialchars($row['t_age']); ?></td>
-                                    <td class="text-center"><?php echo htmlspecialchars($row['t_cnum']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['t_email']); ?></td>
-                                    <td class="text-center teacher-status">
-                                        <span class="badge bg-<?php echo $row['t_status'] == 'active' ? 'success' : 'danger'; ?>">
-                                            <?php echo ucfirst($row['t_status']); ?>
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <div class="btn-group btn-group-sm">
-                                            <button type="button" class="btn btn-primary px-2 btn-edit-teacher" data-bs-toggle="modal" data-bs-target="#deditTeacherModal" data-teacher-id="<?php echo $row['t_id']; ?>">
-                                                <i class="bi bi-pencil"></i>
-                                            </button>
-                                            <button class="btn btn-danger px-2 btn-delete-teacher" data-teacher-id="<?php echo $row['t_id']; ?>">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                        </div>
-                                    </td>
+                <div class="card-body">
+                    <div class="table-responsive p-3">
+                        <table id="teachersTable" class="display nowrap table table-hover">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>ID Code</th>
+                                    <th>Full Name</th>
+                                    <th>Department</th>
+                                    <th>Status</th>
+                                    <th>Email</th>
+                                    <th>Gender</th>
+                                    <th>Birthdate</th>
+                                    <th>Contact</th>
                                 </tr>
-                            <?php endwhile; ?>
-                        <?php else: ?>
-                            <tr>
-                                <td colspan="11" class="text-center">No teacher information found.</td>
-                            </tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+                            </thead>
+                            <tbody>
+                               <?php if ($result && $result->num_rows > 0): ?>
+    <?php while ($row = $result->fetch_assoc()): ?>
+        <?php
+        // ✅ Generate initials (First + Middle + Last)
+        $initials = strtoupper(
+            ($row['t_fname'] ? substr($row['t_fname'], 0, 1) : '') .
+            ($row['t_mname'] ? substr($row['t_mname'], 0, 1) : '') .
+            ($row['t_lname'] ? substr($row['t_lname'], 0, 1) : '')
+        );
+
+        // ✅ Generate formatted full name
+        $full_name = htmlspecialchars(
+            "{$row['t_lname']}" . 
+            (!empty($row['t_suffix']) ? ' ' . $row['t_suffix'] : '') . 
+            ", {$row['t_fname']}" . 
+            (!empty($row['t_mname']) ? ' ' . strtoupper(substr($row['t_mname'], 0, 1)) . '.' : '')
+        );
+        ?>
+        <tr 
+            data-teacher-id="<?= htmlspecialchars($row['t_id']) ?>"
+            data-teacher-idcode="<?= htmlspecialchars($row['idcode']) ?>"
+            data-teacher-name="<?= $full_name ?>"
+            data-teacher-email="<?= htmlspecialchars($row['t_email']) ?>"
+            data-teacher-dept="<?= htmlspecialchars($row['department_name']) ?>"
+            data-teacher-status="<?= htmlspecialchars($row['t_status']) ?>"
+            data-teacher-avatar="<?= htmlspecialchars($row['t_avatar'] ?? '') ?>"
+            data-teacher-gender="<?= htmlspecialchars($row['t_gender']) ?>"
+            data-teacher-bdate="<?= date('Y-m-d', strtotime($row['t_bdate'])) ?>"
+            data-teacher-cnum="<?= htmlspecialchars($row['t_cnum']) ?>">
+            <td></td>
+            <td><?= htmlspecialchars($row['idcode']) ?></td>
+            <td>
+                <div class="d-flex align-items-center gap-2">
+                    <?php if (!empty($row['t_avatar'])): ?>
+                        <img src=" /uploads/teachers/<?= htmlspecialchars($row['t_avatar']) ?>"
+                             alt="Avatar" class="rounded-circle"
+                             style="width:35px; height:35px; object-fit:cover;">
+                    <?php else: ?>
+                        <div class="profile-avatar rounded-circle text-white text-center"
+                             style="width:35px; height:35px; font-size:0.9rem; line-height:35px;">
+                            <?= $initials ?>
+                        </div>
+                    <?php endif; ?>
+                    <?= $full_name ?>
+                </div>
+            </td>
+            <td><?= htmlspecialchars($row['department_name']) ?></td>
+            <td>
+                <span class="badge bg-<?= $row['t_status'] === 'active' ? 'success' : 'danger' ?>">
+                    <?= ucfirst($row['t_status']) ?>
+                </span>
+            </td>
+            <td><?= htmlspecialchars($row['t_email']) ?></td>
+            <td><?= htmlspecialchars($row['t_gender']) ?></td>
+            <td><?= date('Y-m-d', strtotime($row['t_bdate'])) ?></td>
+            <td><?= htmlspecialchars($row['t_cnum']) ?></td>
+        </tr>
+    <?php endwhile; ?>
+<?php else: ?>
+    <tr>
+        <td colspan="10" class="text-center">No teachers found.</td>
+    </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-</center>
 
-
-<!-- Add Teacher Modal -->
-<div class="modal fade" id="addTeacherModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Add New Teacher</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="addTeacherForm" method="POST" novalidate>
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">First Name</label>
-                            <input type="text" class="form-control name-input" name="t_fname" id="add_t_fname" pattern="[A-Za-z\-\s]+" required>
-                            <div class="invalid-feedback">Please enter a valid first name</div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Last Name</label>
-                            <input type="text" class="form-control name-input" name="t_lname" id="add_t_lname" pattern="[A-Za-z\-\s]+" required>
-                            <div class="invalid-feedback">Please enter a valid last name</div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Middle Name</label>
-                            <input type="text" class="form-control name-input" name="t_mname" pattern="[A-Za-z\-\s]*">
-                            <div class="invalid-feedback">Please enter a valid middle name</div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Suffix</label>
-                            <input type="text" class="form-control name-input" name="t_suffix" pattern="[A-Za-z\-\s\.]*">
-                            <div class="invalid-feedback">Please enter a valid suffix</div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Gender</label>
-                            <select class="form-select" name="t_gender" required>
-                                <option value="">Select Gender</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Birthdate</label>
-                            <input type="date" class="form-control" name="t_bdate" id="add_t_bdate" required>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Contact Number</label>
-                            <input type="tel" class="form-control" name="t_cnum" pattern="^09[0-9]{9}$" maxlength="11" placeholder="09XXXXXXXXX" title="Please enter a valid 11-digit phone number starting with 09" required>
-                            <div class="invalid-feedback">Please enter a valid 11-digit phone number starting with 09</div>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Email</label>
-                            <input type="email" class="form-control" name="t_email" required pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$">
-                            <div class="invalid-feedback">Please enter a valid email address</div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Status</label>
-                            <select class="form-select" name="t_status">
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                            </select>
-                        </div>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="submit" form="addTeacherForm" class="btn btn-primary">Add Teacher</button>
+        <!-- Details Column -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm" id="teacherDetailsCard">
+             <div class="card-header d-flex justify-content-between align-items-center">
+               <h5 class="mb-0 fw-bold">Personal Information</h5>
+                </div>
+                <div id="teacherDetailsBody" class="card-body"></div>
+                <div class="card-body" id="teacherDetailsBody">
+                     <div class="row" id="teacherCardsContainer"></div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Edit Teacher Modal -->
-<div class="modal fade" id="deditTeacherModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Edit Teacher</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="deditTeacherForm">
-                    <input type="hidden" name="t_id" id="edit_t_id">
+<!-- Modals -->
+<?php include __DIR__ . '/modals.php'; ?>
+<!-- jQuery -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<!-- SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<!-- Bootstrap Bundle (includes Popper.js) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<!-- DataTables -->
+<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
 
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">First Name</label>
-                            <input type="text" class="form-control" name="t_fname" id="edit_t_fname" required>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Last Name</label>
-                            <input type="text" class="form-control" name="t_lname" id="edit_t_lname" required>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Middle Name</label>
-                            <input type="text" class="form-control" name="t_mname" id="edit_t_mname">
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Suffix</label>
-                            <input type="text" class="form-control" name="t_suffix" id="edit_t_suffix">
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Gender</label>
-                            <select class="form-select" name="t_gender" id="edit_t_gender" required>
-                                <option value="">Select Gender</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Birthdate</label>
-                            <input type="date" class="form-control" name="t_bdate" id="edit_t_bdate" required>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Contact Number</label>
-                            <input type="tel" class="form-control" name="t_cnum" id="edit_t_cnum" pattern="^09[0-9]{9}$" maxlength="11" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Email</label>
-                            <input type="email" class="form-control" name="t_email" id="edit_t_email" required>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Status</label>
-                            <select class="form-select" name="t_status" id="edit_t_status">
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                            </select>
-                        </div>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="submit" form="deditTeacherForm" class="btn btn-primary">Update Teacher</button>
-            </div>
-        </div>
-    </div>
-</div>
-
- <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.css" />
-    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.js"></script>
+<!-- Your custom JS -->
+<script src="./teachers/js/edit_teacher.js"></script>
+<script src="./teachers/js/add_teacher.js"></script>
+<script src="./teachers/js/delete_teacher.js"></script>
 <script>
-     $(document).ready(function () {
-    $('#teachersTable').DataTable({
-        scrollY: '650px',           // Adjust height for approx. 10 rows
-        scrollCollapse: true,
-        paging: true,
-        pageLength: 10,
-        lengthMenu: [5, 10, 25, 50, 100],
-        ordering: true,
-        columnDefs: [
-            { orderable: false, targets: -1 }
-        ],
-        dom: '<"row mb-2"<"col-sm-6"l><"col-sm-6"f>>tip',
-        language: {
-            lengthMenu: "Show _MENU_ entries"
-        }
-    });
-});
-
-    document.addEventListener('DOMContentLoaded', function () {
-    const tbody = document.getElementById('teachersTableBody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-
-    rows.sort((a, b) => {
-        const idA = parseInt(a.dataset.teacherId);
-        const idB = parseInt(b.dataset.teacherId);
-        return idA - idB; // ascending order
-    });
-
-    rows.forEach(row => tbody.appendChild(row)); // re-append in sorted order
-});
-//Add Teacher
-document.addEventListener('DOMContentLoaded', function () {
-    const addTeacherForm = document.getElementById('addTeacherForm');
-    const addTeacherModal = new bootstrap.Modal(document.getElementById('addTeacherModal'));
-    const messageContainer = document.getElementById('messageContainer');
-
-    // Auto-generate password based on name and birthdate
-    const fnameInput = document.getElementById('add_t_fname');
-    const lnameInput = document.getElementById('add_t_lname');
-    const bdateInput = document.getElementById('add_t_bdate');
-    const passwordInput = document.getElementById('add_t_password');
-
-    function generatePassword() {
-        const fname = fnameInput.value.trim().toLowerCase();
-        const lname = lnameInput.value.trim().toLowerCase();
-        const bdate = bdateInput.value.replace(/-/g, '');
-        if (fname && lname && bdate) {
-            passwordInput.value = fname.charAt(0) + lname + bdate;
-        } else {
-            passwordInput.value = '';
-        }
+ // Initialize DataTable globally
+window.table = $('#teachersTable').DataTable({
+  scrollY: '50vh',
+  scrollCollapse: true,
+  paging: true,
+  responsive: {
+    details: {
+      type: 'column',
+      target: 0
     }
-
-    fnameInput.addEventListener('input', generatePassword);
-    lnameInput.addEventListener('input', generatePassword);
-    bdateInput.addEventListener('input', generatePassword);
-
-    addTeacherForm.addEventListener('submit', function (e) {
-        e.preventDefault();
-
-        if (!addTeacherForm.checkValidity()) {
-            addTeacherForm.classList.add('was-validated');
-            return;
-        }
-
-        const formData = new FormData(addTeacherForm);
-
-        fetch('/Project/dean/teachers/processes/add_teacher.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showMessage('Teacher added successfully', 'success');
-                addTeacherModal.hide();
-                addTeacherForm.reset();
-                addTeacherForm.classList.remove('was-validated');
-                // Optionally, reload or update the teachers table
-                location.reload();
-            } else {
-                showMessage(data.message || 'Failed to add teacher', 'danger');
-            }
-        })
-        .catch(() => {
-            showMessage('An error occurred while adding teacher', 'danger');
-        });
-    });
-
-    function showMessage(message, type) {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-        alertDiv.role = 'alert';
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-        messageContainer.appendChild(alertDiv);
-        setTimeout(() => {
-            alertDiv.classList.remove('show');
-            alertDiv.classList.add('hide');
-            alertDiv.addEventListener('transitionend', () => alertDiv.remove());
-        }, 4000);
+  },
+  columnDefs: [
+    { className: 'dtr-control', orderable: false, targets: 0 },
+    { targets: [4, 5, 6, 7, 8], visible: false } // Hide extra columns
+  ],
+  order: [[1, 'asc']],
+  language: {
+    emptyTable: "No data available",
+    paginate: {
+      previous: "Previous",
+      next: "Next"
     }
+  },
+  dom: '<"top d-flex justify-content-between mb-2"lf>rt<"bottom d-flex justify-content-between align-items-center mt-2"ip><"clear">'
 });
 
-//Edit Teacher 
 
-document.addEventListener('DOMContentLoaded', function () {
-    const editTeacherForm = document.getElementById('deditTeacherForm');
-    const editTeacherModal = new bootstrap.Modal(document.getElementById('deditTeacherModal'));
-    const messageContainer = document.getElementById('messageContainer');
+  // Sticky footer for pagination controls
+  $('.bottom').css({
+    position: 'sticky',
+    bottom: '0',
+    background: '#fff',
+    padding: '10px 0',
+    zIndex: '10'
+  });
 
-    // Load teacher data into edit form when edit button is clicked
-    document.querySelectorAll('.btn-edit-teacher').forEach(button => {
-        button.addEventListener('click', function () {
-            const teacherId = this.getAttribute('data-teacher-id');
-            fetch(`/Project/dean/teachers/processes/get_teacher.php?id=${teacherId}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        const teacher = data.data;
-                        editTeacherForm.t_id.value = teacher.t_id;
-                        editTeacherForm.t_fname.value = teacher.t_fname;
-                        editTeacherForm.t_lname.value = teacher.t_lname;
-                        editTeacherForm.t_mname.value = teacher.t_mname;
-                        editTeacherForm.t_suffix.value = teacher.t_suffix;
-                        editTeacherForm.t_gender.value = teacher.t_gender;
-                        editTeacherForm.t_bdate.value = teacher.t_bdate;
-                        editTeacherForm.t_cnum.value = teacher.t_cnum;
-                        editTeacherForm.t_email.value = teacher.t_email;
-                        editTeacherForm.t_status.value = teacher.t_status;
-                        editTeacherForm.t_password.value = teacher.t_password;
-                    } else {
-                        showMessage(data.message || 'Failed to load teacher data', 'danger');
-                        editTeacherModal.hide();
-                    }
-                })
-                .catch(() => {
-                    showMessage('An error occurred while loading teacher data', 'danger');
-                    editTeacherModal.hide();
-                });
-        });
+  // ✅ Default message when no teacher is selected
+  $('#teacherDetailsBody').html(`
+    <div class="card-body-empty d-flex flex-column">
+      <i class="bi bi-person-lines-fill display-4 d-block mb-2 fs-1"></i>
+                        No teacher selected.
+     <small class=" fst-italic">Click a row in the table to view teacher information.</small>
+    </div>
+  `);
+
+  // SweetAlert helper
+  function showAlert(type, message) {
+    Swal.fire({
+      icon: type,
+      title: type === 'success' ? 'Success!' : 'Error!',
+      text: message,
+      timer: 3000,
+      showConfirmButton: false,
+      toast: true,
+      position: 'top-end'
     });
+  }
 
-    editTeacherForm.addEventListener('submit', function (e) {
-        e.preventDefault();
+  // ✅ Handle table row click
+  $('#teachersTable tbody').on('click', 'tr', function() {
+    $('#teachersTable tbody tr').removeClass('active-row');
+    $(this).addClass('active-row');
 
-        if (!editTeacherForm.checkValidity()) {
-            editTeacherForm.classList.add('was-validated');
-            return;
-        }
+    const teacherId = $(this).data('teacher-id');
+    const idcode = $(this).data('teacher-idcode');
+    const teacherName = $(this).data('teacher-name');
+    const teacherEmail = $(this).data('teacher-email');
+    const teacherDept = $(this).data('teacher-dept');
+    const teacherStatus = $(this).data('teacher-status');
+    const teacherAvatar = $(this).data('teacher-avatar');
+    const teacherGender = $(this).data('teacher-gender');
+    const teacherBdate = $(this).data('teacher-bdate');
+    const teacherCnum = $(this).data('teacher-cnum');
 
-        const formData = new FormData(editTeacherForm);
+    // ✅ Build badge
+    const statusBadge = teacherStatus.toLowerCase() === 'active'
+      ? `<span class="badge rounded-pill bg-success">${teacherStatus.charAt(0).toUpperCase() + teacherStatus.slice(1)}</span>`
+      : `<span class="badge rounded-pill bg-danger">${teacherStatus.charAt(0).toUpperCase() + teacherStatus.slice(1)}</span>`;
 
-        fetch('/Project/dean/teachers/processes/update_teacher.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                showMessage('Teacher updated successfully', 'success');
-                editTeacherModal.hide();
-                editTeacherForm.classList.remove('was-validated');
-                // Optionally, reload or update the teachers table
-                location.reload();
-            } else {
-                showMessage(data.message || 'Failed to update teacher', 'danger');
-            }
-        })
-        .catch(() => {
-            showMessage('An error occurred while updating teacher', 'danger');
-        });
-    });
+    // ✅ Avatar logic
+    const avatarHTML = teacherAvatar
+      ? `<img src="/uploads/teachers/${teacherAvatar}" 
+               alt="Teacher Avatar" class="rounded-circle mb-3" 
+               style="width:120px; height:120px; object-fit:cover;">`
+      : `<div class="profile-avatar mx-auto mb-3 d-flex align-items-center justify-content-center bg-secondary text-white rounded-circle"
+               style="width:120px; height:120px; font-size:2rem; font-weight:bold;">
+           ${teacherName.split(/[ ,]+/).map(n => n.charAt(0)).join('').substring(0,2).toUpperCase()}
+         </div>`;
 
-    function showMessage(message, type) {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-        alertDiv.role = 'alert';
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-        messageContainer.appendChild(alertDiv);
-        setTimeout(() => {
-            alertDiv.classList.remove('show');
-            alertDiv.classList.add('hide');
-            alertDiv.addEventListener('transitionend', () => alertDiv.remove());
-        }, 4000);
-    }
-});
+    // ✅ Update teacher info body
+    $('#teacherDetailsBody').html(`
+      ${avatarHTML}
+      <h5 class="fw-bold">${teacherName}</h5>
+      <p class="text-muted mb-1"><strong>ID Code:</strong> ${idcode}</p>
+      <p class="text-muted mb-1"><strong>Email:</strong> ${teacherEmail}</p>
+      <p class="text-muted mb-1"><strong>Department:</strong> ${teacherDept}</p>
+      <p class="text-muted mb-1"><strong>Status:</strong> ${statusBadge}</p>
+      <p class="text-muted mb-1"><strong>Gender:</strong> ${teacherGender}</p>
+      <p class="text-muted mb-1"><strong>Birthdate:</strong> ${teacherBdate}</p>
+      <p class="text-muted mb-1"><strong>Contact:</strong> ${teacherCnum}</p>
+    `);
 
-//Delete Teacher
-document.addEventListener('DOMContentLoaded', function () {
-    const messageContainer = document.getElementById('messageContainer');
+    // ✅ Add Edit/Delete buttons inline in existing card header
+    const header = $('.card-header:has(h5:contains("Teacher\'s Info"))');
+    header.find('.action-buttons').remove(); // Remove old buttons if any
 
-    document.querySelectorAll('.btn-delete-teacher').forEach(button => {
-        button.addEventListener('click', function () {
-            const teacherId = this.getAttribute('data-teacher-id');
-            if (!confirm('Are you sure you want to delete this teacher?')) {
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('t_id', teacherId);
-
-            fetch('/Project/dean/teachers/processes/delete_teacher.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showMessage('Teacher deleted successfully', 'success');
-                    // Optionally, remove the row from the table
-                    const row = document.querySelector(`tr[data-teacher-id="${teacherId}"]`);
-                    if (row) {
-                        row.remove();
-                    }
-                } else {
-                    showMessage(data.message || 'Failed to delete teacher', 'danger');
-                }
-            })
-            .catch(() => {
-                showMessage('An error occurred while deleting teacher', 'danger');
-            });
-        });
-    });
-
-    function showMessage(message, type) {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-        alertDiv.role = 'alert';
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-        messageContainer.appendChild(alertDiv);
-        setTimeout(() => {
-            alertDiv.classList.remove('show');
-            alertDiv.classList.add('hide');
-            alertDiv.addEventListener('transitionend', () => alertDiv.remove());
-        }, 4000);
-    }
-});
+    header.append(`
+      <div class="action-buttons d-flex gap-2">
+        <button class="btn btn-sm btn-primary btn-edit-teacher" 
+                data-bs-toggle="modal" 
+                data-bs-target="#editTeacherModal" 
+                data-teacher-id="${teacherId}">
+          <i class="bi bi-pencil-square me-1"></i>Edit
+        </button>
+        <button class="btn btn-sm btn-danger btn-delete-teacher" 
+                data-teacher-id="${teacherId}">
+          <i class="bi bi-trash me-1"></i>Delete
+        </button>
+      </div>
+    `);
+  });
 </script>
-</body>
-</html>
+
+

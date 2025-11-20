@@ -9,8 +9,27 @@ if (!isset($_SESSION['parent_id'])) {
     exit();
 }
 
+
 $parent_id = $_SESSION['parent_id'];
 
+
+$stmt = $conn->prepare("
+    SELECT p_id, idcode, p_fname, p_mname, p_lname, p_suffix,
+           CONCAT(p_fname, ' ', IFNULL(p_mname,''), ' ', p_lname, ' ', IFNULL(p_suffix,'')) AS full_name
+    FROM parents
+    WHERE p_id = ?
+");
+$stmt->bind_param("i", $parent_id);
+$stmt->execute();
+$parent = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+
+// ✅ If parent not found, logout
+if (!$parent) {
+    session_destroy();
+    header('Location: ../login.php');
+    exit();
+}
 
 // ✅ Generate CSRF token if not exists
 if (!isset($_SESSION['csrf_token'])) {
@@ -128,7 +147,6 @@ h2.mb-4 {
 }
 
 .card-body {
-    background: var(--quaternary);
     padding: 2.5rem;
 }
 
@@ -335,7 +353,9 @@ h2.mb-4 {
         font-size: 0.9rem;
     }
 }
-
+.otp-input{
+    width:45px;
+}
 </style>
 <center>
 <main>
@@ -346,14 +366,27 @@ h2.mb-4 {
                 <div class="card">
                     <div class="profile-header">
                         <div class="profile-avatar">
-                            <?php
-                            $initials = strtoupper(substr($parent['p_fname'] ?? '', 0, 1) . substr($parent['p_lname'] ?? '', 0, 1));
-                            echo htmlspecialchars($initials);
-                            ?>
+                       <div class="profile-avatar">
+    <?php
+    if (!empty($parent['p_fname']) || !empty($parent['p_lname'])) {
+        $initials = strtoupper(
+            substr($parent['p_fname'] ?? '', 0, 1) .
+            substr($parent['p_lname'] ?? '', 0, 1)
+        );
+        echo htmlspecialchars($initials); // Show initials
+    } else {
+        echo "Solo"; // Fallback when both names are empty
+    }
+    ?>
+</div>
+
+
+
                         </div>
                         <div class="profile-info">
                             <h1><?php echo htmlspecialchars($parent['p_fname'] ?? '') . ' ' . htmlspecialchars($parent['p_lname'] ?? ''); ?></h1>
                             <p>Parent Profile</p>
+                            <span class="badge bg-warning rounded-pill text-dark fw-bold"><?php echo htmlspecialchars($parent['idcode'] ?? ''); ?></span>
                         </div>
                     </div>
                     
@@ -427,19 +460,49 @@ h2.mb-4 {
                                 <div class="col-md-6">
                                     <div class="form-group mb-3">
                                         <label class="form-label">Status</label>
-                                        <select class="form-select" name="status" required>
+                                        <select class="form-select" name="status" required disabled>
                                             <option value="active" <?php echo $parent['p_status'] == 'active' ? 'selected' : ''; ?>>Active</option>
                                             <option value="inactive" <?php echo $parent['p_status'] == 'inactive' ? 'selected' : ''; ?>>Inactive</option>
                                         </select>
                                     </div>
                                 </div>
-                                <div class="col-md-6">
-                                    <div class="form-group mb-3">
-                                        <label class="form-label">Password</label>
-                                        <input type="password" class="form-control" name="password" placeholder="Enter new password">
-                                        <small class="form-text text-muted">Leave blank to keep current password</small>
-                                    </div>
-                                </div>
+                             <div class="col-md-6">
+  <div class="form-group mb-3 position-relative">
+    <label class="form-label fw-semibold">Password</label>
+    
+    <input type="password" class="form-control pe-5" id="password" name="password" placeholder="Enter new password">
+    
+    <!-- Eye Icon -->
+    <i class="bi bi-eye-slash" id="togglePassword"
+       style="
+         position: absolute;
+         right: 15px;
+         top: 50%;
+         transform: translateY(-30%);
+         cursor: pointer;
+         color: #6c757d;
+         font-size: 1.1rem;
+       "></i>
+    
+    <small class="form-text text-muted">Leave blank to keep current password</small>
+  </div>
+</div>
+
+<!-- Bootstrap Icons CDN -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+<script>
+const togglePassword = document.querySelector('#togglePassword');
+const password = document.querySelector('#password');
+
+togglePassword.addEventListener('click', function () {
+  const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+  password.setAttribute('type', type);
+  this.classList.toggle('bi-eye');
+  this.classList.toggle('bi-eye-slash');
+});
+</script>
+
                             </div>
 
                             <div class="text-end text-md-end text-center" style="margin-top: -10px;">
@@ -459,18 +522,18 @@ h2.mb-4 {
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Verify Email OTP</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <h5 class="modal-title fw-bold">Verify Email OTP</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body text-center">
         <p>Enter the 6-digit OTP sent to your new email:</p>
         <div class="d-flex justify-content-center gap-2 mb-2">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
         </div>
         <div id="otpFeedback" class="mb-2 text-center"></div>
         <div class="mb-2">
@@ -486,61 +549,109 @@ h2.mb-4 {
 </div>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-    const form = document.getElementById('profileForm');
-    const saveButton = document.getElementById('saveButton');
     const emailInput = document.getElementById("emailInput");
     const sendOtpBtn = document.getElementById("sendOtpBtn");
-    const resendOtpBtn = document.getElementById("resendOtpBtn");
-    const otpFeedbackModal = document.querySelector('#otpModal #otpFeedback');
-    const otpTimerText = document.getElementById("otpTimerText");
     const otpInputs = document.querySelectorAll('.otp-input');
     const verifyOtpBtn = document.getElementById("verifyOtpBtn");
+    const regenerateBtn = document.getElementById("regenerateQR");
+    const qrPreview = document.getElementById("qrPreview");
+    const qrPreviewText = document.getElementById("qrPreviewText");
+    const saveButton = document.getElementById('saveButton');
+    const form = document.getElementById('profileForm');
+    const otpFeedbackModal = document.querySelector('#otpModal #otpFeedback');
+    const resendOtpBtn = document.getElementById("resendOtpBtn");
+    const otpTimerText = document.getElementById("otpTimerText");
 
-    // Parent's original email
-    let originalEmail = "<?php echo htmlspecialchars($parent['p_email'] ?? ''); ?>";
-    let otpVerified = false;
+    let originalEmail = "<?php echo htmlspecialchars($student['s_email'] ?? ''); ?>";
+    let otpVerified = localStorage.getItem("otpVerified") === "true"; // ✅ load from storage
     let otpTimer;
     let otpTimeLeft;
 
-    const otpModal = new bootstrap.Modal(document.getElementById("otpModal"), { 
-        backdrop: "static", 
-        keyboard: false 
-    });
+    const otpModal = new bootstrap.Modal(document.getElementById("otpModal"), { backdrop: "static", keyboard: false });
 
-    // --------------------
-    // Alert helper
-    // --------------------
     function showAlert(type, message) {
         const alertContainer = document.getElementById('alertContainer');
         alertContainer.innerHTML = `
             <div class="alert alert-${type} alert-dismissible show" role="alert">
-                <i class="bi bi-${type === 'success' ? 'check-circle-fill' : 'exclamation-circle-fill'} me-2"></i>
                 ${message}
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>`;
         setTimeout(() => alertContainer.innerHTML = '', 3000);
     }
 
-    // --------------------
-    // OTP Timer
-    // --------------------
-    function startOtpTimer(duration = 600) {
-        clearInterval(otpTimer);
+function startOtpTimer(duration = 600000) {
+    clearInterval(otpTimer);
+
+    const savedExpiry = localStorage.getItem("otpExpiresAt");
+    let expiresAt;
+
+    if (savedExpiry) {
+        expiresAt = parseInt(savedExpiry, 10);
+
+        // If expired already, clear storage and stop timer
+        if (Date.now() >= expiresAt) {
+            localStorage.removeItem("otpExpiresAt");
+            otpTimeLeft = 0;
+            updateTimerDisplay();
+            return;
+        }
+
+        // Restore remaining time
+        otpTimeLeft = Math.floor((expiresAt - Date.now()) / 1000);
+
+        // Reopen modal if the page was refreshed or modal was closed
+        otpModal.show();
+        otpFeedbackModal.innerHTML = `<span class="text-warning">Please complete your OTP verification.</span>`;
+        otpInputs.forEach(i => { 
+            i.disabled = false; 
+            if (!i.value) i.value = ""; 
+        });
+        if (verifyOtpBtn) verifyOtpBtn.disabled = false;
+
+    } else {
+        // Fresh OTP timer
+        expiresAt = Date.now() + duration * 1000;
+        localStorage.setItem("otpExpiresAt", expiresAt);
         otpTimeLeft = duration;
-        updateTimerDisplay();
-        otpTimer = setInterval(() => {
-            otpTimeLeft--;
-            if (otpTimeLeft <= 0) {
-                clearInterval(otpTimer);
-                otpFeedbackModal.innerHTML = `<span class="text-danger">OTP expired. Please resend.</span>`;
-                otpTimerText.textContent = "OTP expired";
-                otpInputs.forEach(input => input.disabled = true);
-                verifyOtpBtn.disabled = true;
-            } else {
-                updateTimerDisplay();
-            }
-        }, 1000);
+
+        otpModal.show();
     }
+
+    updateTimerDisplay();
+
+    otpTimer = setInterval(() => {
+        const now = Date.now();
+        otpTimeLeft = Math.floor((expiresAt - now) / 1000);
+
+        if (otpTimeLeft <= 0) {
+            clearInterval(otpTimer);
+            localStorage.removeItem("otpExpiresAt");
+
+            otpFeedbackModal.innerHTML = `<span class="text-danger">OTP expired. Please resend.</span>`;
+            otpTimerText.textContent = "OTP expired";
+
+            otpInputs.forEach(i => i.disabled = true);
+            if (verifyOtpBtn) verifyOtpBtn.disabled = true;
+
+            return;
+        }
+
+        updateTimerDisplay();
+    }, 1000);
+}
+
+// ---------------------- CHECK EXISTING OTP ON PAGE LOAD ----------------------
+if (!otpVerified) {   // ✅ only reopen if OTP is not verified
+    const savedExpiry = localStorage.getItem("otpExpiresAt");
+    if (savedExpiry && Date.now() < parseInt(savedExpiry, 10)) {
+        otpInputs.forEach(i => { i.value = ""; i.disabled = false; });
+        if (verifyOtpBtn) verifyOtpBtn.disabled = false;
+        otpInputs[0].focus();
+        otpModal.show();
+        startOtpTimer();
+    }
+}
+
 
     function updateTimerDisplay() {
         const minutes = Math.floor(otpTimeLeft / 60).toString().padStart(2, "0");
@@ -548,18 +659,14 @@ document.addEventListener("DOMContentLoaded", function () {
         otpTimerText.textContent = `OTP expires in ${minutes}:${seconds}`;
     }
 
-    // --------------------
-    // Send / Resend OTP
-    // --------------------
     function sendOtp() {
-        const newEmail = emailInput.value.trim();
+       const newEmail = emailInput.value.trim();
 
-        // Prevent OTP if same as verified email
-        if (!newEmail || newEmail === originalEmail) {
-            showAlert("danger", "Enter a new email different from your current verified email.");
-            return;
-        }
-
+    // ✅ Only block if empty
+    if (!newEmail) {
+        showAlert("danger", "Please enter your email address.");
+        return;
+    }
         fetch("../verify_email/request_email_update.php", {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -567,23 +674,34 @@ document.addEventListener("DOMContentLoaded", function () {
         })
         .then(res => res.json())
         .then(data => {
-            if (data.status === "success" || (data.status === "warning" && data.otp_valid_until)) {
-                otpVerified = false;
-                otpModal.show();
-                otpFeedbackModal.innerHTML = `<span class="text-success">${data.message}</span>`;
-                otpInputs.forEach(input => { input.value = ""; input.disabled = false; });
-                verifyOtpBtn.disabled = false;
-                otpInputs[0].focus();
+           if (data.status === "success") {
+    const expiresAt = Date.now() + 600000; // 10 mins
+    localStorage.setItem("otpExpiresAt", expiresAt);
 
-                let otpDuration = 600;
-                if (data.otp_valid_until) {
-                    const now = new Date();
-                    const expires = new Date(data.otp_valid_until);
-                    otpDuration = Math.floor((expires - now) / 1000);
-                    if (otpDuration <= 0) otpDuration = 600;
-                }
-                startOtpTimer(otpDuration);
-            } else {
+   otpVerified = false;
+localStorage.setItem("otpVerified", "false"); // reset flag
+
+    otpModal.show();
+    otpFeedbackModal.innerHTML = `<span class="text-success">${data.message}</span>`;
+    otpInputs.forEach(input => { input.value = ""; input.disabled = false; });
+    if (verifyOtpBtn) verifyOtpBtn.disabled = false;
+    otpInputs[0].focus();
+    startOtpTimer(); // no duration needed
+} else if (data.status === "warning" && data.otp_valid_until) {
+    const expiresAt = Date.now() + 600000; // 10 mins
+    localStorage.setItem("otpExpiresAt", expiresAt);
+
+  otpVerified = false;
+localStorage.setItem("otpVerified", "false"); // reset flag
+
+    otpModal.show();
+    otpFeedbackModal.innerHTML = `<span class="text-warning">${data.message}<br><small>Valid until: ${data.otp_valid_until}</small></span>`;
+    otpInputs.forEach(input => { input.value = ""; input.disabled = false; });
+    if (verifyOtpBtn) verifyOtpBtn.disabled = false;
+    otpInputs[0].focus();
+    startOtpTimer(); // no duration
+}
+ else {
                 showAlert(data.status, data.message);
             }
         })
@@ -593,12 +711,10 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    sendOtpBtn.addEventListener("click", sendOtp);
-    resendOtpBtn.addEventListener("click", sendOtp);
+    if (sendOtpBtn) sendOtpBtn.addEventListener("click", sendOtp);
+    if (resendOtpBtn) resendOtpBtn.addEventListener("click", sendOtp);
 
-    // --------------------
-    // OTP input auto-focus
-    // --------------------
+    // OTP auto-focus logic
     otpInputs.forEach((input, i) => {
         input.addEventListener('input', () => {
             if (input.value.length && i < otpInputs.length - 1) otpInputs[i + 1].focus();
@@ -608,81 +724,127 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
-    // --------------------
-    // Verify OTP
-    // --------------------
-    verifyOtpBtn.addEventListener("click", () => {
-        if (verifyOtpBtn.disabled) return;
-
-        const otp = Array.from(otpInputs).map(input => input.value.trim()).join('');
-        if (otp.length < otpInputs.length) {
-            otpFeedbackModal.textContent = "Please enter the complete OTP.";
-            return;
-        }
-
-        fetch("../verify_email/verify_email_update.php", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: "otp=" + encodeURIComponent(otp)
-        })
-        .then(res => res.json())
-        .then(data => {
-            otpFeedbackModal.innerHTML = `<span class="text-${data.status === 'success' ? 'success' : 'danger'}">${data.message}</span>`;
-            if (data.status === "success") {
-                otpVerified = true;
-                clearInterval(otpTimer);
-                otpModal.hide();
-                showAlert("success", "Email OTP verified successfully.");
-
-                // Mark email as verified
-                originalEmail = emailInput.value.trim();
-                const emailDisplay = document.querySelector("#emailDisplay");
-                if (emailDisplay) emailDisplay.textContent = originalEmail;
+    if (verifyOtpBtn) {
+        verifyOtpBtn.addEventListener("click", () => {
+            if (verifyOtpBtn.disabled) return;
+            const otp = Array.from(otpInputs).map(input => input.value).join('');
+            if (otp.length < otpInputs.length) {
+                otpFeedbackModal.textContent = "Please enter the complete OTP.";
+                return;
             }
-        })
-        .catch(err => {
-            console.error(err);
-            otpFeedbackModal.innerHTML = `<span class="text-danger">OTP verification failed.</span>`;
+
+            fetch("../verify_email/verify_email_update.php", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: "otp=" + encodeURIComponent(otp)
+            })
+            .then(res => res.json())
+            .then(data => {
+                otpFeedbackModal.innerHTML = `<span class="text-${data.status === 'success' ? 'success' : 'danger'}">${data.message}</span>`;
+                if (data.status === "success") {
+                  otpVerified = true;
+localStorage.setItem("otpVerified", "true"); // ✅ save flag
+localStorage.removeItem("otpExpiresAt");     // clear expiry
+
+                    clearInterval(otpTimer);
+                    otpModal.hide();
+                    showAlert("success", "Email OTP verified successfully.");
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                otpFeedbackModal.innerHTML = `<span class="text-danger">OTP verification failed.</span>`;
+            });
         });
-    });
+    }
 
-    // --------------------
-    // Save Profile
-    // --------------------
-    saveButton.addEventListener("click", function(e) {
-        e.preventDefault();
-        saveButton.disabled = true;
-        saveButton.textContent = "Saving...";
+    // Save profile with OTP verification
+    if (saveButton) {
+        saveButton.addEventListener("click", function(e) {
+            e.preventDefault();
+            saveButton.disabled = true;
+            saveButton.textContent = "Saving...";
 
-        const newEmail = emailInput.value.trim();
-        if (newEmail !== originalEmail && !otpVerified) {
-            showAlert("danger", "Please verify OTP before saving.");
-            saveButton.disabled = false;
-            saveButton.textContent = "Save Changes";
-            return;
-        }
+            const newEmail = emailInput.value.trim();
+            if (newEmail !== originalEmail && !otpVerified) {
+                showAlert("danger", "Please verify OTP before saving.");
+                saveButton.disabled = false;
+                saveButton.textContent = "Save Changes";
+                return;
+            }
 
-        const formData = new FormData(form);
-        fetch("profile/update_profile.php", {
-            method: "POST",
-            body: formData,
-            headers: { "X-Requested-With": "XMLHttpRequest" }
-        })
-        .then(res => res.json())
-        .then(data => {
-            saveButton.disabled = false;
-            saveButton.textContent = "Save Changes";
-            showAlert(data.status, data.message);
-            if (data.status === "success") setTimeout(() => location.reload(), 1500);
-        })
-        .catch(err => {
-            console.error(err);
-            saveButton.disabled = false;
-            saveButton.textContent = "Save Changes";
-            showAlert("danger", "An error occurred while saving changes.");
+            const formData = new FormData(form);
+            fetch("/student/profile/update_profile.php", {
+                method: "POST",
+                body: formData,
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            })
+            .then(res => res.json())
+            .then(data => {
+                saveButton.disabled = false;
+                saveButton.textContent = "Save Changes";
+                showAlert(data.status, data.message);
+                if (data.status === "success") setTimeout(() => location.reload(), 1500);
+            })
+            .catch(err => {
+                console.error(err);
+                saveButton.disabled = false;
+                saveButton.textContent = "Save Changes";
+                showAlert("danger", "An error occurred while saving changes.");
+            });
         });
-    });
+    }
 
+    // ------------------- REGENERATE QR -------------------
+    if (regenerateBtn && qrPreview) {
+        const qrContainer = document.getElementById("qrContainer");
+        regenerateBtn.addEventListener("click", function () {
+            const spinner = document.createElement("div");
+            spinner.classList.add("spinner");
+            qrContainer.appendChild(spinner);
+
+            qrPreview.style.opacity = 0;
+
+            fetch("/student/profile/regenerate_qr.php", {
+                method: "POST",
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === "success") {
+                    showAlert("success", "QR code regenerated successfully.");
+                    const newQR = new Image();
+                    newQR.src = data.generated_qrcode + "?t=" + new Date().getTime();
+                    newQR.onload = () => {
+                        if (qrPreview) {
+                            qrPreview.src = newQR.src;
+                            qrPreview.style.transition = "opacity 0.5s ease-in-out";
+                            qrPreview.style.opacity = 1;
+                        } else if (qrPreviewText) {
+                            const img = document.createElement("img");
+                            img.id = "qrPreview";
+                            img.src = newQR.src;
+                            img.alt = "QR Code";
+                            img.style.width = "100%";
+                            img.style.maxWidth = "300px";
+                            qrPreviewText.replaceWith(img);
+                        }
+                        spinner.remove();
+                        showAlert("success", data.message);
+                        setTimeout(() => location.reload(), 1000);
+                    };
+                } else {
+                    spinner.remove();
+                    showAlert("danger", data.message);
+                }
+            })
+            .catch(err => {
+                spinner.remove();
+                console.error(err);
+                showAlert("danger", "Failed to regenerate QR code.");
+            });
+        });
+    }
 });
 </script>
 

@@ -23,7 +23,7 @@ $parent_info = $stmt->get_result()->fetch_assoc();
 
 // Children
 $children_query = "
-    SELECT s.s_id, CONCAT(s.s_fname, ' ', IFNULL(s.s_mname,''), ' ', s.s_lname, ' ', IFNULL(s.s_suffix,'')) AS full_name,
+    SELECT s.*,
            sec.section_code
     FROM students s
     LEFT JOIN parent_student ps ON s.s_id = ps.s_id
@@ -59,7 +59,7 @@ while ($child = $children->fetch_assoc()) {
     $stmt->execute();
     $counts = $stmt->get_result()->fetch_assoc();
 
-    $studentLabels[] = $child['full_name'];
+    $studentLabels[] = $child['s_fname'];
     $presentData[] = intval($counts['present_count']);
     $lateData[] = intval($counts['late_count']);
     $absentData[] = intval($counts['absent_count']);
@@ -91,10 +91,27 @@ $totalExcused = array_sum($excusedData);
     <!-- Left content: avatar circle and text -->
     <div class="header-content">
         <div class="avatar-circle">
-            <?php
-                $initials = strtoupper(substr($parent_info['full_name'], 0, 2)); 
-                echo $initials;
-            ?>
+<?php
+$full_name = trim($parent_info['full_name'] ?? '');
+
+if (stripos($full_name, 'solo') !== false) {
+    // If the name contains the word "Solo" (case-insensitive)
+    echo 'SOLO';
+} else {
+    // Otherwise, show initials normally
+    $name_parts = explode(' ', $full_name);
+    $initials = '';
+    foreach ($name_parts as $part) {
+        if (!empty($part)) {
+            $initials .= strtoupper(substr($part, 0, 1));
+        }
+    }
+    echo htmlspecialchars($initials);
+}
+?>
+
+
+
         </div>
         <div class="header-text">
             <h1>Hi! <?php echo htmlspecialchars($parent_info['full_name']); ?></h1>
@@ -163,7 +180,7 @@ $totalExcused = array_sum($excusedData);
     <div class="col-12 col-md-7 d-flex">
         <div class="chart-card w-100">
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <h2 class="mb-0">Student's Status</h2>
+                <h2 class="mb-0">Children's Status</h2>
                 <span class="badge badge-custom">
                    SUMMARY
                 </span>
@@ -176,9 +193,12 @@ $totalExcused = array_sum($excusedData);
     <div class="col-12 col-md-5 d-flex">
         <div class="chart-card w-100">
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <h2 class="mb-0">Student's Performance</h2>
+                <h2 class="mb-0">Children's Performance</h2>
                 <span class="badge badge-custom badge-secondary">
-                    <?php echo $totalStudents; ?> Students
+                    <?php 
+                    echo $totalStudents . ' ' . ($totalStudents > 1 ? 'Children' : 'Child'); 
+                    ?>
+
                 </span>
             </div>
             <canvas id="pieChart"></canvas>

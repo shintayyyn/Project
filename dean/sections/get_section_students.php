@@ -1,0 +1,60 @@
+<?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Only allow dean users
+if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'dean') {
+    http_response_code(403);
+    echo json_encode(['error' => 'Unauthorized']);
+    exit();
+}
+
+require_once __DIR__ . '/../../includes/db.php';
+
+if (!isset($_GET['section_id'])) {
+    echo json_encode(['students' => [], 'count' => 0]);
+    exit();
+}
+
+$section_id = intval($_GET['section_id']);
+
+// ------------------ Fetch active term ------------------
+$term_result = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1");
+$term_id = ($term_result && $row = $term_result->fetch_assoc()) ? intval($row['term_id']) : 0;
+
+// ------------------ Fetch students for the active term ------------------
+$query = "
+    SELECT 
+        s.s_id, 
+        s.idcode, 
+        s.s_lname, 
+        s.s_fname, 
+        s.s_mname, 
+        sd.degree_code,
+        ss.section_id,     -- ✅ include this for your transfer payload
+        ss.term_id         -- (optional, useful for debugging)
+    FROM students_sections ss
+    INNER JOIN students s ON s.s_id = ss.s_id
+    LEFT JOIN students_degrees sd ON s.s_id = sd.s_id
+    WHERE ss.section_id = ? AND ss.term_id = ?
+    ORDER BY s.s_lname, s.s_fname
+";
+
+$stmt = $conn->prepare($query);
+$stmt->bind_param("ii", $section_id, $term_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+$students = [];
+while ($row = $result->fetch_assoc()) {
+    $students[] = $row;
+}
+
+header('Content-Type: application/json');
+echo json_encode([
+    'students' => $students,
+    'count' => count($students)
+]);
+exit();
+?>

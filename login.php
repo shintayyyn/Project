@@ -6,8 +6,17 @@
   <title>Attendify Login</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-
+  <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;700&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+  
   <style>
+    *{
+            font-family: 'Baloo 2', 'Nunito', 'Poppins', sans-serif;
+        }
     :root {
       --primary: #033A70;
       --accent: #FFCB05;
@@ -22,17 +31,16 @@
       background: var(--primary);
       font-family: Arial, sans-serif;
       overflow-x: hidden;
+      
     }
 
-    /* Layout Container */
     .login-container {
       display: flex;
       min-height: 100vh;
       width: 100%;
-      overflow: hidden;
     }
 
-    /* Welcome Section */
+
     .welcome-section {
       flex: 0 0 50%;
       background: var(--primary);
@@ -42,27 +50,27 @@
       align-items: center;
       justify-content: center;
       padding: 3rem;
-      position: relative;
       text-align: center;
+      cursor: none;
     }
 
-    .welcome-section img.logo {
-      max-width: 200px;
-      margin-bottom: 1.5rem;
-      object-fit: contain;
-    }
+   .welcome-section img.logo {
+    max-width: 350px;       /* keeps it responsive */
+    height: auto;           /* maintain aspect ratio */
+    object-fit: contain;    /* preserves image quality and aspect ratio */
+    display: block;         /* removes inline spacing */
+}
+
 
     .welcome-section h1 {
       font-size: 2rem;
       font-weight: bold;
-      margin-bottom: 0.5rem;
     }
 
     .welcome-section p {
       opacity: 0.9;
     }
 
-    /* Login Section */
     .login-section {
       flex: 0 0 50%;
       background: var(--background-light);
@@ -72,16 +80,28 @@
       padding: 3rem;
     }
 
-    /* Login Card */
+  .login-card {
+    max-width: 450px;
+    width: 100%;
+    background: white;
+    border-radius: 1rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    overflow: hidden;
+    animation: slideUp 0.4s ease-out;
+}
+
+/* Enlarge login card on small screens */
+@media (max-width: 768px) {
     .login-card {
-      width: 100%;
-      max-width: 450px;
-      background: white;
-      border-radius: 1rem;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.15);
-      overflow: hidden;
-      animation: slideUp 0.4s ease-out;
+        max-width: 100%; /* almost full width */
+        margin: 1rem auto; /* center it */
+        padding: -10rem; /* add extra padding for usability */
+        border-radius: 1.5rem; /* slightly rounder */
     }
+}
+
+
+
 
     @keyframes slideUp {
       from { transform: translateY(20px); opacity: 0; }
@@ -95,7 +115,6 @@
       padding: 1rem;
     }
 
-    /* Form Styling */
     .login-form {
       padding: 2rem;
       background: var(--background-light);
@@ -107,15 +126,13 @@
     }
 
     .input-icon {
-      position: absolute;
-      top: 50%;
-      left: 15px;
-      transform: translateY(-50%);
-      color: var(--primary);
+     background: linear-gradient(135deg, var(--primary), var(--hover-blue));
+      color: white;
+      font-size:20px;
     }
 
     .form-control {
-      padding: 12px 15px 12px 45px;
+      padding: 12px 15px 12px 15px;
       border-radius: 8px;
       border: 1px solid var(--border-light);
       background: white;
@@ -126,17 +143,17 @@
       box-shadow: 0 0 5px rgba(3,58,112,0.2);
     }
 
-    /* Password Toggle */
     .toggle-password {
-      position: absolute;
-      top: 50%;
-      right: 15px;
-      transform: translateY(-50%);
+       position: absolute;
+  right: 10px; /* distance from the right edge */
+  top: 50%;
+ transform: translateY(-50%);
       cursor: pointer;
       color: var(--hover-blue);
+  z-index: 10;
+  user-select: none;
     }
 
-    /* Buttons */
     .btn-login {
       background: linear-gradient(135deg, var(--primary), var(--hover-blue));
       color: white;
@@ -148,11 +165,11 @@
       transition: 0.3s;
     }
 
-    .btn-login:hover {
-      background: var(--hover-blue);
+   .btn-login:hover {
+     color: white;
+      opacity: 0.9;
     }
 
-    /* Forgot Password */
     .forgot-link {
       display: block;
       text-align: center;
@@ -166,7 +183,6 @@
       text-decoration: underline;
     }
 
-    /* Responsive Layout */
     @media (max-width: 992px) {
       .login-container {
         flex-direction: column;
@@ -175,40 +191,39 @@
         flex: 0 0 100%;
         width: 100%;
       }
-      .welcome-section img.logo {
-        max-width: 150px;
-      }
     }
+    body::-webkit-scrollbar{
+    display: none;
+}
   </style>
 </head>
 <body>
   <div class="login-container">
-    <!-- Welcome Panel -->
+    <!-- Welcome Section -->
     <div class="welcome-section">
       <img src="assets/img/attendifylogo.png" alt="Attendify Logo" class="logo">
       <h1>Welcome to Attendify</h1>
       <p>Your Gateway to Academic Excellence</p>
     </div>
 
-    <!-- Login Panel -->
+    <!-- Login Section -->
     <div class="login-section">
       <div class="login-card">
         <div class="login-header">
           <h4>Academic Portal Login</h4>
         </div>
         <form action="process_login.php" method="POST" class="login-form">
-          <!-- ID Field -->
-          <div class="input-group">
-            <i class="material-icons input-icon">badge</i>
-            <input type="text" name="login_id" class="form-control" placeholder="Enter your ID or Email" required>
+         <div class="input-group">
+          <span class="input-group-text input-icon"><i class="bi bi-person-fill"></i></span>
+          <input type="text" name="login_id" class="form-control" placeholder="ID or Email" required>
           </div>
 
-          <!-- Password Field -->
-          <div class="input-group">
-            <i class="material-icons input-icon">lock</i>
-            <input type="password" name="password" class="form-control" placeholder="Enter your password" id="password" required>
-            <span class="material-icons toggle-password" onclick="togglePassword()">visibility_off</span>
-          </div>
+         <div class="input-group position-relative">
+  <span class="input-group-text input-icon"><i class="bi bi-shield-lock-fill"></i></span>
+  <input type="password" name="password" class="form-control pe-5" placeholder="Password" id="password" required>
+  <span class="material-icons toggle-password" onclick="togglePassword()">visibility_off</span>
+</div>
+
 
           <span class="text-danger" id="login-error"></span>
           <button type="submit" class="btn btn-login mt-2">Login</button>
@@ -218,10 +233,8 @@
     </div>
   </div>
 
-
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-    // Password Toggle Logic
     function togglePassword() {
       const field = document.getElementById("password");
       const icon = document.querySelector(".toggle-password");
@@ -234,64 +247,56 @@
       }
     }
 
-    // Login Form Submit
-    document.querySelector('.login-form').addEventListener('submit', function(e) {
+    // ✅ Generate a strong persistent device token
+    function getDeviceToken() {
+      let token = localStorage.getItem("device_token");
+      if (!token) {
+        const fingerprint = navigator.userAgent + navigator.platform + screen.width + screen.height;
+        const base = btoa(fingerprint).substring(0, 20);
+        const uniquePart = crypto.randomUUID().slice(0, 12);
+        token = base + "-" + uniquePart;
+        localStorage.setItem("device_token", token);
+      }
+      return token;
+    }
+
+    // Inject token before submit
+    document.querySelector(".login-form").addEventListener("submit", function(e) {
       e.preventDefault();
-      const btn = this.querySelector('.btn-login');
-      const errorSpan = document.getElementById('login-error');
-      errorSpan.textContent = '';
+      const token = getDeviceToken();
+      const hidden = document.createElement("input");
+      hidden.type = "hidden";
+      hidden.name = "device_token";
+      hidden.value = token;
+      this.appendChild(hidden);
+
+      const btn = this.querySelector(".btn-login");
+      const errorSpan = document.getElementById("login-error");
+      errorSpan.textContent = "";
 
       const formData = new FormData(this);
+      btn.disabled = true;
 
-      fetch(this.action, {
-        method: 'POST',
-        body: formData
-      })
-      .then(response => response.text())
-      .then(text => {
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          throw new Error('Invalid JSON response');
-        }
+      fetch(this.action, { method: "POST", body: formData })
+        .then(res => res.text())
+        .then(text => {
+          let data;
+          try { data = JSON.parse(text); }
+          catch { throw new Error("Invalid JSON"); }
 
-        if (data.choose_role) {
-          var roleModal = new bootstrap.Modal(document.getElementById('roleChoiceModal'));
-          roleModal.show();
-          window._deanRedirect = data.dean_redirect || 'dean/dashboard.php';
-          window._teacherRedirect = data.teacher_redirect || 'teacher/dashboard.php';
-          return;
-        }
+          if (data.choose_role) {
+            window.location.href = data.teacher_redirect;
+            return;
+          }
 
-        if (data.error) {
-          errorSpan.textContent = data.error;
-        } else if (data.success) {
-          window.location.href = data.redirect;
-        }
-      })
-      .catch(() => {
-        errorSpan.textContent = 'An error occurred. Please try again.';
-      });
-    });
-
-    // Role Selection Actions
-    document.getElementById('chooseDean').addEventListener('click', function() {
-      fetch('set_role.php', {
-        method: 'POST',
-        body: new URLSearchParams({ role: 'dean' })
-      }).then(() => {
-        window.location.href = window._deanRedirect;
-      });
-    });
-
-    document.getElementById('chooseTeacher').addEventListener('click', function() {
-      fetch('set_role.php', {
-        method: 'POST',
-        body: new URLSearchParams({ role: 'teacher' })
-      }).then(() => {
-        window.location.href = window._teacherRedirect;
-      });
+          if (data.error) {
+            errorSpan.textContent = data.error;
+          } else if (data.success) {
+            window.location.href = data.redirect;
+          }
+        })
+        .catch(() => errorSpan.textContent = "An error occurred. Please try again.")
+        .finally(() => btn.disabled = false);
     });
   </script>
 </body>

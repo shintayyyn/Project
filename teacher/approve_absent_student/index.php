@@ -30,10 +30,23 @@ $t_id = $_SESSION['user_id'];
 // Fetch only absent requests for sections handled by this teacher
 $stmt = $conn->prepare("
     SELECT ar.id, ar.absent_date, ar.reason, ar.attachment, ar.status,
-           s.s_id, CONCAT(s.s_fname,' ',s.s_lname) AS student_name,
+           s.s_id, CONCAT(
+    s.s_lname,
+    IF(s.s_suffix IS NOT NULL AND s.s_suffix != '', CONCAT(' ', s.s_suffix), ''),
+    ', ',
+    s.s_fname,
+    IF(s.s_mname IS NOT NULL AND s.s_mname != '', CONCAT(' ', LEFT(s.s_mname,1), '.'), '')
+) AS student_name,
            ss.subject_code, ss.day_of_week, ss.start_time, ss.end_time,
            sec.section_code,  -- human-readable like BSIT 1A
-           p.p_id, CONCAT(p.p_fname,' ',p.p_lname) AS parent_name
+           p.p_id, CONCAT(
+    p.p_lname,
+    IF(p.p_suffix IS NOT NULL AND p.p_suffix != '', CONCAT(' ', p.p_suffix), ''),
+    ', ',
+    p.p_fname,
+    IF(p.p_mname IS NOT NULL AND p.p_mname != '', CONCAT(' ', LEFT(p.p_mname,1), '.'), '')
+) AS parent_name
+
     FROM absent_requests ar
     INNER JOIN students s ON ar.s_id = s.s_id
     INNER JOIN parents p ON ar.p_id = p.p_id
@@ -57,8 +70,9 @@ $results = $stmt->get_result();
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 </head>
 <style>
+
     body{
-        overflow: hidden;
+        overflow-x: hidden;
     }
     /* Card styling */
 .card {
@@ -77,10 +91,10 @@ $results = $stmt->get_result();
 }
 
 /* Card body should NOT scroll */
-.card-body {
-    overflow: visible; /* allow table scroll independently */
-
+.table-responsive {
+    overflow-x: hidden !important; /* disable horizontal scroll */
 }
+
 
 th{
     background: var(--primary) !important;
@@ -99,25 +113,48 @@ th{
 .btn-primary{
     padding: 0.5rem !important;
 }
+
+/* Make DataTable header text and sorting arrows vertically centered */
+table.dataTable thead th {
+    vertical-align: middle !important; /* ensures vertical alignment */
+}
+
+table.dataTable thead th .sorting:before,
+table.dataTable thead th .sorting:after,
+table.dataTable thead th .sorting_asc:before,
+table.dataTable thead th .sorting_asc:after,
+table.dataTable thead th .sorting_desc:before,
+table.dataTable thead th .sorting_desc:after {
+    top: 50% !important;          /* position arrows in middle */
+    transform: translateY(-50%);  /* perfectly center them */
+}
+
+
 </style>
 <link rel="stylesheet" href="assets/css/content.css">
 <body>
-<div class="container-fluid mt-5">
-    <div class="card shadow-sm w-100">
+<div class="container-fluid">
+    <h2 class="fw-bold">Absent File Request</h2>
+     <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-4 ">
+                    <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+                    <li class="breadcrumb-item active">Requests</li>
+                </ol>
+            </nav>
+    <div class="card shadow-sm">
         <div class="card-header bg-primary text-white">
-            <h5 class="mb-0"><i class="bi bi-file-earmark-text"></i> Absent Requests</h5>
+            <h5 class="mb-0 fw-bold"><i class="bi bi-file-earmark-text"></i> Absent Requests</h5>
         </div>
-        <div class="card-body">
-            <table id="absentTable" class="table">
+        <div class="table-responsive card-body">
+            <table id="absentTable" class="table table-hover">
                 <thead>
-                    <tr>
+                    <tr class="text-center">
                         <th>Student</th>
                         <th>Parent</th>
                         <th>Section</th>
                         <th>Subject</th>
                         <th>Schedule</th>
                         <th>Date of Absence</th>
-                        <th>Reason</th>
                         <th>Attachment</th>
                         <th>Status</th>
                         <th>Action</th>
@@ -130,20 +167,44 @@ th{
                         <td><?= htmlspecialchars($row['parent_name']) ?></td>
                         <td><?= htmlspecialchars($row['section_code']) ?></td>
                         <td><?= htmlspecialchars($row['subject_code']) ?></td>
-                        <td><?= htmlspecialchars($row['day_of_week'].' '.date("H:i", strtotime($row['start_time'])).'-'.date("H:i", strtotime($row['end_time']))) ?></td>
+                         <?php
+                            $dayMap = [
+                                'Monday'    => 'M',
+                                'Tuesday'   => 'T',
+                                'Wednesday' => 'W',
+                                'Thursday'  => 'Th',
+                                'Friday'    => 'F',
+                                'Saturday'  => 'S',
+                                'Sunday'    => 'Su'
+                            ];
+
+                            // Convert full days to short form
+                            $daysArray = explode(',', $row['day_of_week']);
+                            $shortDays = array_map(fn($d) => $dayMap[trim($d)] ?? $d, $daysArray);
+                            $daysShortStr = implode('', $shortDays); // e.g., MWF
+                            ?>
+
+                            <td>
+                                <?= htmlspecialchars(
+                                    $daysShortStr . ' (' .
+                                    date("h:i A", strtotime($row['start_time'])) . '-' .
+                                    date("h:i A", strtotime($row['end_time'])) . ')'
+                                ) ?>
+                            </td>
+
                         <td><?= htmlspecialchars($row['absent_date']) ?></td>
-                        <td><?= htmlspecialchars($row['reason']) ?></td>
-                        <td class="text-center">
+                        <td>
+                        <?= htmlspecialchars($row['reason']) ?>
+                        <br>
                         <?php if($row['attachment']): ?>
-                           <a href="#" class="btn btn-primary view-attachment" 
+                            <a href="#" class="btn btn-sm btn-primary mt-1 view-attachment" 
                             data-file="../parent/uploads/absent_attachments/<?= urlencode(basename($row['attachment'])) ?>">
-                            <i class="bi bi-eye"></i>
+                            <i class="bi bi-eye"></i> View
                             </a>
                         <?php else: ?>
-                           <small text class="alert alert-info p-1">No attachment provided</small>
+                            <small class="alert alert-info p-1 d-inline-block mt-1">No attachment provided</small>
                         <?php endif; ?>
                     </td>
-
                         <td>
                             <?php if($row['status'] === 'Pending'): ?>
                                 <span class="badge bg-warning text-dark">Pending</span>
@@ -208,52 +269,83 @@ th{
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 <script>
-    $(document).ready(function(){
-    $('#absentTable').DataTable({
-    scrollY: '50vh',        // Set vertical scroll height
-    scrollCollapse: true,   // Collapse if rows are less than scrollY
-    paging: true,           // Enable pagination
-    responsive: true        // Optional: make it responsive
+ $(document).ready(function(){
+$('#absentTable').DataTable({
+    scrollY: '50vh',
+    scrollCollapse: true,
+    paging: true,
+    responsive: true,
+    ordering: true,
+    pageLength: 10,
+    scrollX: false,
+    columnDefs: [
+        { orderable: true, targets: [0,1,2,3,4,5,6,7,8] } // optional: specify which columns are orderable
+    ],
+    order: [[8, 'asc']] // 0-indexed, so 8 = 9th column (Status)
 });
+
+
 
 
    const toastEl = new bootstrap.Toast(document.getElementById('toast'));
 
-    $('.action-btn').click(function() {
-        const btn = $(this);
-        const action = btn.data('action');
-        const id = btn.data('id');
+$('.action-btn').click(function() {
+    const btn = $(this);
+    const action = btn.data('action');
+    const id = btn.data('id');
+    const row = btn.closest('tr');
 
-        $.ajax({
-            url: 'approve_absent_student/process_request.php',
-            type: 'POST',
-            data: { action, id },
-            success: function(res) {
-                if(res.status === 'success'){
-                    // Update table row
-                    const row = btn.closest('tr');
-                    row.find('td:nth-child(9)').html(action === 'approve' 
+    row.find('.action-btn').prop('disabled', true);
+
+    $.ajax({
+        url: 'approve_absent_student/process_request.php',
+        type: 'POST',
+        data: { action, id },
+        dataType: 'json',
+        success: function(res) {
+            if (res.status === 'success') {
+                const statusCell = row.find('td:nth-child(8)');
+                const actionCell = row.find('td:nth-child(9)');
+
+                // Update status with fade
+                statusCell.children('span').fadeOut(200, function() {
+                    statusCell.html(action === 'approve' 
                         ? '<span class="badge bg-success">Approved</span>' 
                         : '<span class="badge bg-danger">Rejected</span>');
-                    row.find('td:nth-child(10)').html('<button class="btn btn-secondary btn-sm" disabled>Done</button>');
+                    statusCell.children('span').hide().fadeIn(400);
+                });
 
-                    // Show toast
-                    $('#toast-message').text(res.message);
-                    if(action === 'approve') {
-                        $('#toast').removeClass('bg-danger').addClass('bg-success');
-                    } else {
-                        $('#toast').removeClass('bg-success').addClass('bg-danger');
-                    }
-                    toastEl.show();
-                } else {
-                    alert(res.message);
-                }
-            },
-            error: function() {
-                alert('Something went wrong');
+                // Highlight row immediately using inline style
+                const highlightColor = action === 'approve' ? '#d4edda' : '#f8d7da';
+                row.css('background-color', highlightColor);
+
+                // Fade back to original after 2s
+                setTimeout(() => {
+                    row.css('transition', 'background-color 0.5s ease');
+                    row.css('background-color', ''); // remove inline, goes back to default
+                }, 2000);
+
+                // Replace buttons with Done after 1s
+                setTimeout(() => actionCell.html('<button class="btn btn-secondary btn-sm" disabled>Done</button>'), 1000);
+
+                // Show toast
+                $('#toast-message').text(res.message);
+                $('#toast').removeClass('bg-success bg-danger')
+                             .addClass(action === 'approve' ? 'bg-success' : 'bg-danger');
+                toastEl.show();
+
+            } else {
+                alert(res.message);
+                row.find('.action-btn').prop('disabled', false);
             }
-        });
+        },
+        error: function() {
+            alert('Something went wrong');
+            row.find('.action-btn').prop('disabled', false);
+        }
     });
+});
+
 
   // Show attachment in modal
     $('.view-attachment').click(function(e){

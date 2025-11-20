@@ -40,26 +40,27 @@ $academic_year = $current_term['year_start'] . ' - ' . $current_term['year_end']
 $semester = $current_term['semester'];
 
 // =========================
-// 3. Fetch Students and Their Degree Codes
+// 3. Fetch Students and Their Degree Codes (Regular only, active)
 // =========================
-// Fetch unassigned students along with their degree_code
 $stmt = $conn->prepare("
 SELECT 
     s.s_id, s.idcode, s.s_fname, s.s_lname, s.s_mname, s.s_suffix,
-    s.year_level, s.is_regular,
+    s.year_level, s.is_regular, s.s_status, s.enrollment_status,
     COALESCE(sd.degree_code, 'UNKNOWN') AS degree_code,
     ss.section_id
 FROM students s
 LEFT JOIN students_degrees sd
-       ON s.s_id = sd.s_id  -- removed term_id filter
+       ON s.s_id = sd.s_id  -- optionally filter latest degree if needed
 LEFT JOIN students_sections ss
        ON s.s_id = ss.s_id AND ss.term_id = ?
-WHERE ss.section_id IS NULL
-  AND s.term_id = ?
+WHERE s.is_regular = 1
+  AND s.s_status = 'active'
+  AND (s.enrollment_status LIKE 'Promoted%' OR s.enrollment_status = 'Not yet Enrolled')
+  AND (ss.section_id IS NULL OR ss.section_id = '')
 ORDER BY sd.degree_code ASC, s.s_lname ASC
 ");
 
-$stmt->bind_param("ii", $term_id, $term_id);
+$stmt->bind_param("i", $term_id);
 
 $stmt->execute();
 $students_result = $stmt->get_result();
@@ -140,17 +141,22 @@ foreach ($all_students as $s) {
 
     $regularity = ($s['is_regular'] == 1) ? 'Regular' : 'Irregular';
 
+    // Append promoted info if applicable
+    $yearLevelText = $s['year_level'];
+   
+
     $sheet->setCellValue("A{$row_num}", $counter)
           ->setCellValue("B{$row_num}", $s['idcode'])
           ->setCellValue("C{$row_num}", $fullName)
-          ->setCellValue("D{$row_num}", $s['degree_code']) // directly from students_degrees
-          ->setCellValue("E{$row_num}", $s['year_level'])
+          ->setCellValue("D{$row_num}", $s['degree_code'])
+          ->setCellValue("E{$row_num}", $yearLevelText)
           ->setCellValue("F{$row_num}", $regularity)
           ->setCellValue("G{$row_num}", $s['section_id'] ?? '');
 
     $row_num++;
     $counter++;
 }
+
 
 
 // Auto-size columns

@@ -103,7 +103,7 @@ $result = $conn->query($sql);
         <div class="col-lg-8">
             <div class="card shadow-sm">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5>Teachers List</h5>
+                    <h5 class="fw-bold">Teachers List</h5>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive p-3">
@@ -168,7 +168,7 @@ $result = $conn->query($sql);
                     <?= $full_name ?>
                 </div>
             </td>
-            <td><?= htmlspecialchars($row['department_name']) ?></td>
+              <td> <span class="badge rounded-pill bg-warning text-dark"><?= htmlspecialchars($row['department_name']) ?></span></td>
             <td>
                 <span class="badge bg-<?= $row['t_status'] === 'active' ? 'success' : 'danger' ?>">
                     <?= ucfirst($row['t_status']) ?>
@@ -195,14 +195,11 @@ $result = $conn->query($sql);
         <!-- Details Column -->
         <div class="col-lg-4">
             <div class="card shadow-sm" id="teacherDetailsCard">
-                <div class="card-header">
-                    <h5>Teacher's Info</h5>
+             <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold">Personal Information</h5>
                 </div>
+                <div id="teacherDetailsBody" class="card-body"></div>
                 <div class="card-body" id="teacherDetailsBody">
-                    <div class="card-body-empty" id="noTeacherSelected">
-                        <i class="bi bi-person-lines-fill"></i>
-                        No teacher selected.
-                    </div>
                      <div class="row" id="teacherCardsContainer"></div>
                 </div>
             </div>
@@ -227,54 +224,64 @@ $result = $conn->query($sql);
 <script src="./teachers/js/add_teacher.js"></script>
 <script src="./teachers/js/delete_teacher.js"></script>
 <script>
-    // Initialize DataTable globally
-    window.table = $('#teachersTable').DataTable({
+  // Initialize DataTable globally
+  window.table = $('#teachersTable').DataTable({
     scrollY: '50vh',
     scrollCollapse: true,
     paging: true,
     responsive: {
-        details: {
-            type: 'column',
-            target: 0
-        }
+      details: {
+        type: 'column',
+        target: 0
+      }
     },
     columnDefs: [
-        { className: 'dtr-control', orderable: false, targets: 0 },
-        { targets: [4, 5, 6, 7, 8], visible: false } // Hide extra columns
+      { className: 'dtr-control', orderable: false, targets: 0 },
+      { targets: [4, 5, 6, 7, 8], visible: false } // Hide extra columns
     ],
     order: [[1, 'asc']],
     language: {
-        paginate: {
-            previous: "Previous",
-            next: "Next"
-        }
+      paginate: {
+        previous: "Previous",
+        next: "Next"
+      }
     },
     dom: '<"top d-flex justify-content-between mb-2"lf>rt<"bottom d-flex justify-content-between align-items-center mt-2"ip><"clear">'
-});
+  });
 
-    // Style bottom section
-    $('.bottom').css({
-        position: 'sticky',
-        bottom: '0',
-        background: '#fff',
-        padding: '10px 0',
-        zIndex: '10'
-    });
+  // Sticky footer for pagination controls
+  $('.bottom').css({
+    position: 'sticky',
+    bottom: '0',
+    background: '#fff',
+    padding: '10px 0',
+    zIndex: '10'
+  });
 
-     function showAlert(type, message) {
+  // ✅ Default message when no teacher is selected
+  $('#teacherDetailsBody').html(`
+    <div class="card-body-empty d-flex flex-column">
+      <i class="bi bi-person-lines-fill display-4 d-block mb-2 fs-1"></i>
+                        No teacher selected.
+     <small class=" fst-italic">Click a row in the table to view teacher information.</small>
+    </div>
+  `);
+
+  // SweetAlert helper
+  function showAlert(type, message) {
     Swal.fire({
-        icon: type, // 'success' | 'error' | 'warning' | 'info' | 'question'
-        title: type === 'success' ? 'Success!' : 'Error!',
-        text: message,
-        timer: 3000,
-        showConfirmButton: false,
-        toast: true,
-        position: 'top-end'
+      icon: type,
+      title: type === 'success' ? 'Success!' : 'Error!',
+      text: message,
+      timer: 3000,
+      showConfirmButton: false,
+      toast: true,
+      position: 'top-end'
     });
-}
- // Handle row click to show details
+  }
 
-    $('#teachersTable tbody').on('click', 'tr', function() {
+  // ✅ Handle table row click
+  $('#teachersTable tbody').on('click', 'tr', function() {
     $('#teachersTable tbody tr').removeClass('active-row');
     $(this).addClass('active-row');
 
@@ -289,45 +296,53 @@ $result = $conn->query($sql);
     const teacherBdate = $(this).data('teacher-bdate');
     const teacherCnum = $(this).data('teacher-cnum');
 
-    // ✅ Build status badge here
+    // ✅ Build badge
     const statusBadge = teacherStatus.toLowerCase() === 'active'
-        ? `<span class="badge rounded-pill bg-success">${teacherStatus.charAt(0).toUpperCase() + teacherStatus.slice(1)}</span>`
-        : `<span class="badge rounded-pill bg-danger">${teacherStatus.charAt(0).toUpperCase() + teacherStatus.slice(1)}</span>`;
+      ? `<span class="badge rounded-pill bg-success">${teacherStatus.charAt(0).toUpperCase() + teacherStatus.slice(1)}</span>`
+      : `<span class="badge rounded-pill bg-danger">${teacherStatus.charAt(0).toUpperCase() + teacherStatus.slice(1)}</span>`;
 
-    let avatarHTML = teacherAvatar
-        ? `<img src=" /uploads/teachers/${teacherAvatar}" 
+    // ✅ Avatar logic
+    const avatarHTML = teacherAvatar
+      ? `<img src="/uploads/teachers/${teacherAvatar}" 
                alt="Teacher Avatar" class="rounded-circle mb-3" 
                style="width:120px; height:120px; object-fit:cover;">`
-        : `<div class="profile-avatar mx-auto mb-3" 
+      : `<div class="profile-avatar mx-auto mb-3 d-flex align-items-center justify-content-center bg-secondary text-white rounded-circle"
                style="width:120px; height:120px; font-size:2rem; font-weight:bold;">
-               ${teacherName.split(/[ ,]+/).map(n => n.charAt(0)).join('').substring(0,2).toUpperCase()}
-           </div>`;
+           ${teacherName.split(/[ ,]+/).map(n => n.charAt(0)).join('').substring(0,2).toUpperCase()}
+         </div>`;
 
+    // ✅ Update teacher info body
     $('#teacherDetailsBody').html(`
-        ${avatarHTML}
-        <h5 class="fw-bold">${teacherName}</h5>
-        <p class="text-muted mb-1"><strong>ID Code:</strong> ${idcode}</p>
-        <p class="text-muted mb-1"><strong>Email:</strong> ${teacherEmail}</p>
-        <p class="text-muted mb-1"><strong>Department:</strong> ${teacherDept}</p>
-        <p class="text-muted mb-1"><strong>Status:</strong> ${statusBadge}</p>
-        <p class="text-muted mb-1"><strong>Gender:</strong> ${teacherGender}</p>
-        <p class="text-muted mb-1"><strong>Birthdate:</strong> ${teacherBdate}</p>
-        <p class="text-muted mb-1"><strong>Contact:</strong> ${teacherCnum}</p>
-        
-        <div class="action-buttons d-flex justify-content-center gap-2 mt-3">
-            <button class="btn btn-sm btn-primary btn-edit-teacher" 
-                    data-bs-toggle="modal" 
-                    data-bs-target="#editTeacherModal" 
-                    data-teacher-id="${teacherId}">
-                <i class="bi bi-pencil-square me-1"></i>Edit
-            </button>
-            <button class="btn btn-sm btn-danger btn-delete-teacher" 
-                    data-teacher-id="${teacherId}">
-                <i class="bi bi-trash me-1"></i>Delete
-            </button>
-        </div>
+      ${avatarHTML}
+      <h5 class="fw-bold">${teacherName}</h5>
+      <p class="text-muted mb-1"><strong>ID Code:</strong> ${idcode}</p>
+      <p class="text-muted mb-1"><strong>Email:</strong> ${teacherEmail}</p>
+      <p class="text-muted mb-1"><strong>Department:</strong> ${teacherDept}</p>
+      <p class="text-muted mb-1"><strong>Status:</strong> ${statusBadge}</p>
+      <p class="text-muted mb-1"><strong>Gender:</strong> ${teacherGender}</p>
+      <p class="text-muted mb-1"><strong>Birthdate:</strong> ${teacherBdate}</p>
+      <p class="text-muted mb-1"><strong>Contact:</strong> ${teacherCnum}</p>
     `);
-});
 
-   </script>
+    // ✅ Add Edit/Delete buttons inline in existing card header
+    const header = $('.card-header:has(h5:contains("Teacher\'s Info"))');
+    header.find('.action-buttons').remove(); // Remove old buttons if any
+
+    header.append(`
+      <div class="action-buttons d-flex gap-2">
+        <button class="btn btn-sm btn-primary btn-edit-teacher" 
+                data-bs-toggle="modal" 
+                data-bs-target="#editTeacherModal" 
+                data-teacher-id="${teacherId}">
+          <i class="bi bi-pencil-square me-1"></i>Edit
+        </button>
+        <button class="btn btn-sm btn-danger btn-delete-teacher" 
+                data-teacher-id="${teacherId}">
+          <i class="bi bi-trash me-1"></i>Delete
+        </button>
+      </div>
+    `);
+  });
+</script>
+
 

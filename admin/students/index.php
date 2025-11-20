@@ -146,6 +146,11 @@ $result = $conn->query($sql);
     min-width: 80px;
 }
 
+#studentsTable td:nth-child(2) {
+  white-space: normal !important;
+  word-wrap: break-word !important;
+}
+
 </style>
 <main>
 <div class="container-fluid p-0">
@@ -165,7 +170,7 @@ $result = $conn->query($sql);
     </div>
 
     <!-- Students Lists -->
-    <div class="row h-100vh">
+    <div class="row h-100">
     <!-- Students List Table -->
     <div class="col-lg-8">
         <div class="card shadow-sm ">
@@ -188,38 +193,77 @@ $result = $conn->query($sql);
                                 <th>ID</th>
                                 <th>Full Name</th>
                                 <th>Section</th>
-                                <th>Student Type</th>
                             </tr>
                         </thead>
                       <tbody>
                     <?php while($row = $result->fetch_assoc()): ?>
-                        <?php
-                            $lastName = trim($row['s_lname']);
-                            $suffix   = !empty($row['s_suffix']) ? ' ' . trim($row['s_suffix']) : '';
-                            $firstName = trim($row['s_fname']);
-                            $middleInitial = !empty($row['s_mname']) ? ' ' . strtoupper($row['s_mname'][0]) . '.' : '';
-                            $fullName = "{$lastName}{$suffix}, {$firstName}{$middleInitial}";
+                       <?php
+$lastName = trim($row['s_lname']);
+$suffix = !empty($row['s_suffix']) ? ' ' . trim($row['s_suffix']) : '';
+$firstName = trim($row['s_fname']);
+$middleInitial = !empty($row['s_mname']) ? ' ' . strtoupper($row['s_mname'][0]) . '.' : '';
+$fullName = "{$lastName}{$suffix}, {$firstName}{$middleInitial}";
 
-                            // Generate initials for avatar
-                            $initials = strtoupper(substr($row['s_fname'], 0, 1) . substr($row['s_lname'], 0, 1));
+// Generate initials for avatar
+$initials = strtoupper(substr($row['s_fname'], 0, 1) . substr($row['s_lname'], 0, 1));
 
-                            // Avatar path
-                            $avatar_path = "/uploads/students/student_{$row['s_id']}.jpg";
-                            $server_path = $_SERVER['DOCUMENT_ROOT'] . $avatar_path;
-                            $avatar_exists = file_exists($server_path);
+// Avatar path
+$avatar_path = "/uploads/students/student_{$row['s_id']}.jpg";
+$server_path = $_SERVER['DOCUMENT_ROOT'] . $avatar_path;
+$avatar_exists = file_exists($server_path);
 
-                             $yearLevel = null;
-                    if (!empty($row['section_code'])) {
-                        $parts = explode(' ', $row['section_code']); // e.g., ['BSHM', '3A']
-                        if (isset($parts[1])) {
-                            preg_match('/\d+/', $parts[1], $matches); // extract number
-                            if (!empty($matches)) {
-                                $yearLevel = (int)$matches[0];
-                            }
-                        }
-                    }
-                    
-                        ?>
+// Determine active term
+$term_id = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1")
+                ->fetch_assoc()['term_id'] ?? 0;
+
+// Initialize section_code
+$section_code = '';
+
+// Fetch section_code depending on is_regular
+if ($term_id) {
+    if ($row['is_regular'] == 1) {
+        // Regular student: fetch from students_sections for active term
+        $stmtSec = $conn->prepare("
+            SELECT section_code
+            FROM students_sections
+            WHERE s_id = ? AND term_id = ?
+            ORDER BY ss_id DESC
+            LIMIT 1
+        ");
+    } else {
+        // Irregular student: fetch from subject_enrollments for active term
+        $stmtSec = $conn->prepare("
+            SELECT section_code
+            FROM subject_enrollments
+            WHERE s_id = ? AND term_id = ?
+            ORDER BY se_id DESC
+            LIMIT 1
+        ");
+    }
+
+    $stmtSec->bind_param("ii", $row['s_id'], $term_id);
+    $stmtSec->execute();
+    $secResult = $stmtSec->get_result()->fetch_assoc();
+    $stmtSec->close();
+
+    $section_code = $secResult['section_code'] ?? '';
+}
+
+// Extract year level from section_code (if present)
+$yearLevel = null;
+if (!empty($section_code)) {
+    $parts = explode(' ', $section_code); // e.g., ['BSHM', '3A']
+    if (isset($parts[1])) {
+        preg_match('/\d+/', $parts[1], $matches);
+        if (!empty($matches)) {
+            $yearLevel = (int)$matches[0];
+        }
+    }
+}
+
+$row['section_code'] = $section_code; // assign for display
+?>
+
  <tr class="student-row"
     data-student-id="<?= htmlspecialchars($row['s_id']); ?>"
     data-idcode="<?= htmlspecialchars($row['idcode']); ?>"
@@ -262,19 +306,9 @@ $result = $conn->query($sql);
         <span class="badge rounded-pill bg-secondary">Not yet assigned</span>
     <?php endif; ?>
 </td>
-
-        <td>
-            <?php
-                // Determine student type based on enrollment status
-                if ((int)$row['is_regular'] === 1) {
-                echo '<span class="badge rounded-pill bg-success">Regular</span>';
-            } else {
-                echo '<span class="badge rounded-pill bg-danger">Irregular</span>';
-            }
-            ?>
-        </td>
     </tr>
 <?php endwhile; ?>
+
 </tbody>
 
                     </table>
@@ -286,13 +320,24 @@ $result = $conn->query($sql);
     <!-- Personal Information + Actions -->
 <div class="col-lg-4">
     <div class="card shadow-sm flex-fill" id="studentDetailsCard">
-        <div class="card-header">
-            <h5>Personal Information</h5>
-        </div>
+       <div class="card-header d-flex justify-content-between align-items-center">
+  <h5 class="mb-0">Personal Information</h5>
+  <div class="action-buttons d-flex gap-2">
+    <button type="button" class="btn btn-sm btn-primary btn-edit-student">
+      <i class="bi bi-pencil-square me-1"></i> Edit
+    </button>
+    <button type="button" class="btn btn-sm btn-danger btn-delete-student">
+      <i class="bi bi-trash me-1"></i> Delete
+    </button>
+  </div>
+</div>
+
         <div class="card-body">
+            
                     <div class="card-body-empty" id="noStudentSelected">
-                <i class="bi bi-person-lines-fill"></i>
+               <i class="bi bi-person-lines-fill display-4 d-block mb-2"></i>
                 No student selected.
+                <p class="small fst-italic">Click a row in the table to view teacher information.</p>
             </div>
 
             <!-- Details content (hidden by default) -->
@@ -320,12 +365,6 @@ $result = $conn->query($sql);
                     <p class="text-muted  mb-1"><strong>Degree:</strong> <span id="detailDegree"></span></p>
                     <p class="text-muted mb-1"><strong>Year Level:</strong> <span id="detailYearLevel"></span></p>
                     <p class="text-muted">Active Term: <?= htmlspecialchars($term_label); ?></p>
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="action-buttons d-flex justify-content-center gap-2 mt-3">
-                    <button type="button" class="btn btn-sm btn-primary btn-edit-student"><i class="bi bi-pencil-square me-1"></i> Edit</button>
-                    <button type="button" class="btn btn-sm btn-danger btn-delete-student"><i class="bi bi-trash me-1"></i> Delete</button>
                 </div>
             </div>
         </div>
@@ -417,7 +456,6 @@ $result = $conn->query($sql);
                                         }
                                         ?>
                                     </select>
-                                    <button type="button" class="btn btn-warning  w-auto" id="addYearBtn">Add New Year Level</button>
                                 </div>
                                 <div id="yearLevelsContainer" class="mt-2"></div>
                             </div>
@@ -738,23 +776,41 @@ if (irregularCheckbox) toggleIrregular(irregularCheckbox);
 <script>
 
    $(document).ready(() => {
-    // ---------- DATA TABLE ----------
-    window.studentsTable = $('#studentsTable').DataTable({
-        responsive: { details: false },
-        columnDefs: [
-            { 
-                orderable: false, 
-                className: 'text-center', 
-                render: () => '<button class="btn btn-sm btn-primary toggle-details-btn">+</button>' 
+// ---------- DATA TABLE ----------
+
+window.studentsTable = $('#studentsTable').DataTable({
+    responsive: { details: false },
+    columnDefs: [
+        { 
+            orderable: false, 
+            className: 'text-center', 
+            render: () => '<button class="btn btn-sm btn-primary toggle-details-btn">+</button>' 
+        },
+        {
+            targets: 1, // Full Name column
+            createdCell: function (td) {
+                $(td).css({
+                    'white-space': 'normal',
+                    'word-wrap': 'break-word'
+                });
             }
-        ],
-        order: [[1, 'desc']],
-        pageLength: 20,
-        lengthMenu: [5, 10, 25, 50, 100],
-        scrollY: '50vh',
-        scrollCollapse: true,
-        scroller: true
-    });
+        }
+    ],
+    order: [[1, 'desc']],
+    pageLength: 25,
+    lengthMenu: [5, 10, 25, 50, 100],
+    scrollY: '50vh',
+    scrollCollapse: true,
+    scroller: true
+});
+
+// ---------- FILTERED COUNTER ----------
+studentsTable.on('draw', function () {
+    let count = studentsTable.rows({ filter: 'applied' }).count();
+    $('#filteredCount').text(count);
+});
+
+
 
     // ---------- TOGGLE DETAILS BUTTON ----------
     $('#studentsTable tbody').on('click', '.toggle-details-btn', function () {
@@ -767,24 +823,6 @@ if (irregularCheckbox) toggleIrregular(irregularCheckbox);
         } else {
             row.child('<div>Additional info here...</div>').show();
             $(this).text('−');
-        }
-    });
-
-    // ---------- ADD YEAR ----------
-    document.getElementById('addYearBtn').addEventListener('click', function() {
-        let newYear = prompt("Enter new year level (e.g., 5th Year):");
-        if (newYear) {
-            let yearInt = parseInt(newYear);
-            if (!isNaN(yearInt)) {
-                let select = document.getElementById('year_level');
-                let option = document.createElement('option');
-                option.value = yearInt;
-                option.text = newYear;
-                option.selected = true;
-                select.add(option);
-            } else {
-                alert("Invalid input. Must be like '5th Year'.");
-            }
         }
     });
 

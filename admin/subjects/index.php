@@ -134,21 +134,99 @@ while ($row = $subjects_result->fetch_assoc()) {
 <!-- Filters Row -->
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div class="d-flex align-items-center gap-2">
-        <label for="degreeFilter" class="form-label mb-0">Filter by Degree:</label>
-        <select id="degreeFilter" class="form-select w-auto">
-            <option value="" selected>All Degrees</option>
-            <?php foreach ($subjects_by_degree as $degree_code => $degree_data): ?>
-                <option value="<?php echo htmlspecialchars($degree_code); ?>">
-                    <?php echo htmlspecialchars($degree_code . ' - ' . $degree_data['degree_name']); ?>
-                </option>
-            <?php endforeach; ?>
-        </select>
-    </div>
+  <div class="position-relative">
+    <!-- Filter icon inside select -->
+    <span 
+      style="
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--primary);
+        color: var(--tertiary);
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+        width: 38px;
+      ">
+      <i class="fa-solid fa-filter"></i>
+    </span>
 
-    <div class="d-flex align-items-center gap-2">
-        <label for="searchInput" class="form-label mb-0">Search:</label>
-        <input type="text" id="searchInput" class="form-control" placeholder="Search subjects...">
-    </div>
+    <select id="degreeFilter" class="form-select w-auto" 
+            style="
+              border: 1px solid #033A70; 
+              border-radius: 8px; 
+              height: 50px; 
+              padding-left: 46px; /* icon space */
+              padding-top: 0;
+              padding-bottom: 0;
+              display: inline-block;
+              vertical-align: middle;
+              -webkit-appearance: none;
+              -moz-appearance: none;
+              appearance: none;
+            ">
+      <option value="" selected>All Degrees</option>
+      <?php foreach ($subjects_by_degree as $degree_code => $degree_data): ?>
+        <option value="<?php echo htmlspecialchars($degree_code); ?>">
+          <?php echo htmlspecialchars($degree_code . ' - ' . $degree_data['degree_name']); ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+  </div>
+</div>
+
+
+ <div class="d-flex align-items-center gap-2">
+  <label for="searchInput" class="form-label mb-0"></label>
+  <div class="position-relative flex-grow-1">
+    <!-- Search icon inside span -->
+    <span 
+      style="
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--primary);
+        color: var(--tertiary);
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+        width: 38px;
+      ">
+      <i class="fa-brands fa-searchengin fa-lg"></i>
+    </span>
+
+    <!-- Input -->
+    <input 
+      type="text" 
+      id="searchInput" 
+      class="form-control ps-5 pe-5" 
+      placeholder="Search..."
+      style="
+        height: 50px; 
+        border: 1px solid #033A70; 
+        border-radius: 8px; 
+        vertical-align: middle;
+      "
+    >
+
+    <!-- Clear button -->
+    <button 
+      type="button" 
+      id="clearSearch" 
+      class="btn-close position-absolute end-0 top-50 translate-middle-y me-2" 
+      aria-label="Clear search" 
+      style="display:none; width: 38px; height: 38px; font-size: 0.8rem;">
+    </button>
+  </div>
+</div>
+
+
 </div>
 
 <!-- No data message (hidden by default) -->
@@ -174,7 +252,6 @@ while ($row = $subjects_result->fetch_assoc()) {
                                     <th>Subject Code</th>
                                     <th>Description</th>
                                     <th>Units</th>
-                                    <th>Assigned Teachers</th>
                                     <th>Term Added</th>
                                     <th>Actions</th>
                                 </tr>
@@ -186,7 +263,6 @@ while ($row = $subjects_result->fetch_assoc()) {
                                             <td><?php echo htmlspecialchars($subject['subject_code']); ?></td>
                                             <td><?php echo htmlspecialchars($subject['subject_description']); ?></td>
                                             <td><?php echo htmlspecialchars($subject['units']); ?></td>
-                                            <td><?php echo htmlspecialchars($subject['teachers']); ?></td>
                                            <td>
                                                 <?php if (!empty($subject['term_label'])): ?>
                                                     <?= htmlspecialchars($subject['term_label']); ?>
@@ -402,7 +478,6 @@ while ($row = $subjects_result->fetch_assoc()) {
                                         <th>Subject Code</th>
                                         <th>Description</th>
                                         <th>Units</th>
-                                        <th>Assigned Teachers</th>
                                         <th>Term</th>
                                         <th>Actions</th>
                                     </tr>
@@ -413,7 +488,6 @@ while ($row = $subjects_result->fetch_assoc()) {
                                             <td>${subject.subject_code}</td>
                                             <td>${subject.subject_description}</td>
                                             <td>${subject.units}</td>
-                                            <td>${subject.teachers || 'No teachers assigned'}</td>
                                             <td>
                                                 ${subject.term_label || '<span class="text-muted">No Term Assigned</span>'}
                                             </td>
@@ -616,6 +690,7 @@ document.getElementById('editSubjectForm').addEventListener('submit', async func
 const degreeFilter = document.getElementById('degreeFilter');
 const searchInput = document.getElementById('searchInput');
 const noDataMessage = document.getElementById('noDataMessage');
+const clearBtn = document.getElementById('clearSearch'); // 👈 clear button
 
 function applyFilters() {
     let selected = degreeFilter.value.toLowerCase();
@@ -646,10 +721,32 @@ function applyFilters() {
         }
     });
 
-    // toggle "No Data" message
+    // Toggle "No Data" message visibility
     noDataMessage.classList.toggle('d-none', anyVisible);
 }
 
+// 🔹 Event listeners
 degreeFilter.addEventListener('change', applyFilters);
 searchInput.addEventListener('keyup', applyFilters);
+
+// 🔹 Clear button logic
+if (clearBtn) {
+    // Show/hide clear button when typing
+    searchInput.addEventListener('input', () => {
+        clearBtn.style.display = searchInput.value ? 'block' : 'none';
+    });
+
+    // Clear search and re-apply filters
+    clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        clearBtn.style.display = 'none';
+        searchInput.focus();
+        applyFilters();
+    });
+
+    // Optional: hover effect
+    clearBtn.addEventListener('mouseover', () => (clearBtn.style.opacity = '1'));
+    clearBtn.addEventListener('mouseout', () => (clearBtn.style.opacity = '0.8'));
+}
+
 </script>

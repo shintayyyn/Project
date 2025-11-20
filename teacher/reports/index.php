@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../../includes/db.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
-// Teacher authentication
+// ✅ Ensure user is a teacher
 if (!isset($_SESSION['user_id']) || ($_SESSION['user_type'] ?? '') !== 'teacher') {
     header('Location: ../../login.php');
     exit();
@@ -10,48 +10,69 @@ if (!isset($_SESSION['user_id']) || ($_SESSION['user_type'] ?? '') !== 'teacher'
 
 $teacher_id = $_SESSION['user_id'];
 
-// Fetch teacher's sections with subjects
+// ✅ Fetch active term
+$term_query = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1");
+$active_term = $term_query->fetch_assoc();
+$term_id = $active_term['term_id'] ?? null;
+
+if (!$term_id) {
+    // Fallback to latest term
+    $term_query = $conn->query("SELECT term_id FROM academic_terms ORDER BY term_id DESC LIMIT 1");
+    $term_id = $term_query->fetch_assoc()['term_id'] ?? 0;
+}
+if (!$term_id) die("No active term found.");
+
+// ✅ Fetch teacher's sections (active term)
 $stmt = $conn->prepare("
     SELECT s.section_id, s.section_name, ss.subject_code, ss.day_of_week, ss.start_time, ss.end_time
     FROM sections_schedules ss
     INNER JOIN sections s ON ss.section_id = s.section_id
-    WHERE ss.teacher_id = ?
+    WHERE ss.teacher_id = ? AND ss.term_id = ?
 ");
-$stmt->bind_param("i", $teacher_id);
+$stmt->bind_param("ii", $teacher_id, $term_id);
 $stmt->execute();
 $sections_result = $stmt->get_result();
 $stmt->close();
 
-// Build maps
+// ✅ Build mapping arrays
 $section_subject_map = [];
 $section_days_map = [];
 $teacher_sections = [];
-
-while($row = $sections_result->fetch_assoc()){
+while ($row = $sections_result->fetch_assoc()) {
     $section_id = $row['section_id'];
     $subject_code = $row['subject_code'];
 
     $teacher_sections[$section_id] = $row['section_name'];
     $section_subject_map[$section_id][] = $subject_code;
 
-    $dayTime = $row['day_of_week'] . " (" . date("g:i A", strtotime($row['start_time'])) . " - " . date("g:i A", strtotime($row['end_time'])) . ")";
-    $section_days_map[$subject_code][] = $dayTime;
+    $day_full = ucfirst(strtolower($row['day_of_week']));
+    $time_range = date("g:i A", strtotime($row['start_time'])) . ' - ' . date("g:i A", strtotime($row['end_time']));
+    $section_days_map[$subject_code][] = $day_full . " ({$time_range})";
 }
 
-// Filters
+// Remove duplicates
+foreach ($section_subject_map as $sid => $subs) {
+    $section_subject_map[$sid] = array_unique($subs);
+}
+
+// ✅ Date filters
 $month = $_GET['month'] ?? date('Y-m');
 $semester = isset($_GET['semester']) ? (int)$_GET['semester'] : 0;
 $startDate = $month . '-01';
-$endDate = date('Y-m-t', strtotime($startDate)); // last day of month
+$endDate = date('Y-m-t', strtotime($startDate));
 
-// Fetch all students for teacher's sections
+// ✅ Fetch Regular Students
 $all_section_ids = array_keys($teacher_sections);
-if(!empty($all_section_ids)){
+$students_result = [];
+if (!empty($all_section_ids)) {
     $placeholders = implode(',', array_fill(0, count($all_section_ids), '?'));
     $types = str_repeat('i', count($all_section_ids));
 
     $stmt = $conn->prepare("
-        SELECT ss.section_id, s.s_id, CONCAT(s.s_fname,' ',IFNULL(s.s_mname,''),' ',s.s_lname,' ',IFNULL(s.s_suffix,'')) AS student_name
+        SELECT ss.section_id, s.s_id,
+               CONCAT(s.s_lname, IF(s.s_suffix!='', CONCAT(' ',s.s_suffix), ''), ', ',
+                      s.s_fname, IF(s.s_mname!='', CONCAT(' ',LEFT(s.s_mname,1),'.'), '')) AS student_name,
+               'Regular' AS student_type
         FROM students_sections ss
         JOIN students s ON ss.s_id = s.s_id
         WHERE ss.section_id IN ($placeholders)
@@ -61,70 +82,136 @@ if(!empty($all_section_ids)){
     $stmt->execute();
     $students_result = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
-} else {
-    $students_result = [];
 }
 
-// Group students by section
-$students_by_section = [];
-foreach($students_result as $stu){
-    $students_by_section[$stu['section_id']][] = [
-        's_id' => $stu['s_id'],
-        'student_name' => $stu['student_name']
-    ];
+// ✅ Fetch Irregular Students from subject_enrollments
+$irregular_students = [];
+foreach ($section_subject_map as $sec_id => $subjects) {
+    foreach ($subjects as $subj) {
+       $stmt = $conn->prepare("
+    SELECT se.section_code AS section_id, se.s_id, se.subject_code,
+           CONCAT(s.s_lname, IF(s.s_suffix!='', CONCAT(' ',s.s_suffix), ''), ', ',
+                  s.s_fname, IF(s.s_mname!='', CONCAT(' ',LEFT(s.s_mname,1),'.'), '')) AS student_name,
+           'Irregular' AS student_type
+    FROM subject_enrollments se
+    JOIN students s ON se.s_id = s.s_id
+    JOIN sections_schedules ss 
+      ON se.section_code = ss.section_id AND se.subject_code = ss.subject_code
+    WHERE ss.teacher_id = ? 
+      AND ss.term_id = ? 
+      AND se.term_id = ? 
+      AND se.section_code = ? 
+      AND se.subject_code = ?
+");
+
+$stmt->bind_param("iiiis", $teacher_id, $term_id, $term_id, $sec_id, $subj);
+$stmt->execute();
+$irregular_students = array_merge($irregular_students, $stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+$stmt->close();
+
+    }
 }
 
-// Prepare attendance counts
+// ✅ Merge students
+$students = [];
+foreach ($students_result as $r) {
+    $students[$r['s_id'].'_'.$r['section_id'].'_'.$r['student_type']] = $r;
+}
+foreach ($irregular_students as $ir) {
+    $key = $ir['s_id'].'_'.$ir['section_id'].'_'.$ir['student_type'];
+    if (!isset($students[$key])) $students[$key] = $ir;
+}
+
+// ✅ Prepare attendance summary
 $attendance = [];
-
-foreach($students_result as $stu){
+foreach ($students as $stu) {
     $s_id = $stu['s_id'];
     $section_id = $stu['section_id'];
     $subjects = $section_subject_map[$section_id] ?? [];
 
-    foreach($subjects as $subject_code){
-        // Initialize counts
-        $present = 0;
-        $late = 0;
-        $absent = 0;
+    foreach ($subjects as $subj) {
+        if ($stu['student_type']=='Irregular' && $subj != $stu['subject_code']) continue;
 
-        // Fetch attendance records for this student & subject in selected month
         $stmt = $conn->prepare("
             SELECT status
             FROM attendance
-            WHERE s_id = ? 
-              AND subject_code = ? 
-              AND DATE(time_in) BETWEEN ? AND ?
+            WHERE s_id=? AND subject_code=? AND term_id=? AND DATE(time_in) BETWEEN ? AND ?
         ");
-        $stmt->bind_param("isss", $s_id, $subject_code, $startDate, $endDate);
+        $stmt->bind_param("isiss", $s_id, $subj, $term_id, $startDate, $endDate);
         $stmt->execute();
         $att_records = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
 
-        foreach($att_records as $row){
+        $present = $late = $absent = 0;
+        foreach ($att_records as $row) {
             $status = strtoupper(trim($row['status']));
-            if($status === 'PRESENT') $present++;
-            elseif($status === 'LATE') $late++;
-            elseif($status === 'ABSENT') $absent++;
+            if ($status==='PRESENT') $present++;
+            elseif ($status==='LATE') $late++;
+            elseif ($status==='ABSENT') $absent++;
         }
 
-        $attendance[$s_id][$subject_code] = [
+        $attendance[$s_id][$subj] = [
             'present' => $present,
             'late' => $late,
             'absent' => $absent,
-            'days' => implode(', ', $section_days_map[$subject_code] ?? [])
+            'days' => implode(', ', $section_days_map[$subj] ?? [])
         ];
     }
 }
+
+// ✅ Fetch all terms and join with academic years
+$term_query = "
+     SELECT 
+        t.term_id,
+        t.semester,
+        y.year_start,
+        y.year_end,
+        t.is_active
+    FROM academic_terms t
+    INNER JOIN academic_years y ON t.ay_id = y.ay_id
+    ORDER BY y.year_start DESC, t.semester ASC
+";
+$terms_result = $conn->query($term_query);
+
+// ✅ Get Active Academic Term with Academic Year
+$term_sql = "
+    SELECT 
+        CONCAT('A.Y. ', ay.year_start, '-', ay.year_end, ' | ',
+            CASE 
+                WHEN at.semester = 1 THEN '1st Semester'
+                WHEN at.semester = 2 THEN '2nd Semester'
+                ELSE 'N/A'
+            END
+        ) AS active_term_label
+    FROM academic_terms at
+    JOIN academic_years ay ON at.ay_id = ay.ay_id
+    WHERE at.is_active = 1
+    LIMIT 1
+";
+$term_res = $conn->query($term_sql);
+$active_term_label = 'N/A';
+if ($term_res && $term_res->num_rows > 0) {
+    $active_term_label = $term_res->fetch_assoc()['active_term_label'];
+}
+
+
+// ✅ Day abbreviations
+$day_abbrevs = [
+    'Monday'=>'M','Tuesday'=>'T','Wednesday'=>'W','Thursday'=>'Th',
+    'Friday'=>'F','Saturday'=>'Sa','Sunday'=>'Su'
+];
+$week_order = ['M','T','W','Th','F','Sa','Su'];
 ?>
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>Attendance per Student</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-<link rel="stylesheet" href="assets/css/content.css">
 </head>
 <style>
 :root {
@@ -142,9 +229,12 @@ foreach($students_result as $stu){
 html, body {
     width: 100%;
     height: 100%;
-    overflow: hidden; /* no outer scroll */
     margin: 0;
     padding: 0;
+}
+
+body{
+    overflow-x: hidden;
 }
 
 /* Main content area */
@@ -163,10 +253,9 @@ main {
     max-width: calc(100% - 2rem); /* leave 1rem margin from viewport edges */
     overflow: hidden;
 }
-
 .card-header{
-    background: var(--tertiary) !important;
-
+    background: var(--primary) !important;
+    color:white;
 }
 
 /* Table container scroll only inside card */
@@ -174,7 +263,6 @@ main {
     width: 100%;
     overflow-x: auto;  
     overflow-y: hidden;
-    max-height: 75vh; 
 }
 
 /* Profile header */
@@ -257,61 +345,104 @@ th{
                         <p>Attendance Reports for Section</p>
                     </div>
                     <div class="ms-auto">
-                        <button type="button" class="btn btn-primary" id="openExportModal">
-                        <i class="bi bi-file-earmark-excel"></i> Export Attendance Report
+                        <button type="button" class="btn btn-ni" id="openExportModal">
+                        <i class="bi bi-file-earmark-excel me-2"></i> Download Report
                         </button>
-
                     </div>
                 </div>
                 <div class="card-body">
-                    <div class="d-flex mb-3 gap-2 align-items-center">
-                    <label class="fw-bold">Section:</label>
-                   <select id="sectionSelect" class="form-select w-auto">
-                        <option value="">-- Select Section --</option>
-                        <?php
-                        // Example query: get sections for the logged-in teacher
-                        $teacher_id = $_SESSION['user_id'];
-                        $stmt = $conn->prepare("
-                            SELECT s.section_id, s.section_code, ss.subject_code, 
-                                ss.day_of_week, ss.start_time, ss.end_time
-                            FROM sections s
-                            INNER JOIN sections_schedules ss ON s.section_id = ss.section_id
-                            WHERE ss.teacher_id = ?
-                        ");
-                        $stmt->bind_param("i", $teacher_id);
-                        $stmt->execute();
-                        $result = $stmt->get_result();
+                    <p class="badge bg-warning" style="color:var(--primary);">Filters</p>
+                    <form id="reportFilters" class="d-flex flex-wrap align-items-center gap-3 mb-3">
+                        <!-- Subject Widget -->
+                        <div class="input-group input-group-sm w-auto shadow-sm rounded">
+                            <span class="input-group-text bg-light border-0 fw-bold">
+                                <i class="bi bi-book text-secondary me-1"></i>
+                            </span>
+                            <select id="sectionSelect" class="form-select border-0 rounded-end">
+                                <option value="">All Subjects</option>
+                                <?php foreach ($section_subject_map as $section_id => $subjects): ?>
+                                    <?php 
+                                        $section_name = htmlspecialchars($teacher_sections[$section_id]);
+                                        foreach ($subjects as $subject_code): 
+                                            $schedule_entries = $section_days_map[$subject_code] ?? [];
+                                            $time_day_map = [];
 
-                        while($row = $result->fetch_assoc()):
-                            $sectionId   = $row['section_id'];
-                            $sectionCode = $row['section_code'];
-                            $subjectCode = $row['subject_code'];
-                            $days        = $row['day_of_week'];
-                            $startTime   = substr($row['start_time'], 0, 5); // HH:MM format
-                            $endTime     = substr($row['end_time'], 0, 5);   // HH:MM format
-                        ?>
-                            <option 
-                            value="<?= $sectionId ?>" 
-                            data-subject="<?= $subjectCode ?>" 
-                            data-days="<?= $row['day_of_week'] ?>" 
-                            data-start="<?= $row['start_time'] ?>" 
-                            data-end="<?= $row['end_time'] ?>"
-                        >
-                            <?= $sectionCode ?> - <?= $subjectCode ?>
-                        </option>
+                                            foreach ($schedule_entries as $entry) {
+                                                preg_match('/\((.*?)\)/', $entry, $time_match);
+                                                $time_range = $time_match[1] ?? '';
+                                                $days_part = trim(preg_replace('/\(.*?\)/', '', $entry));
+                                                $days = array_map('trim', explode(',', $days_part));
 
+                                                foreach ($days as $day_full) {
+                                                    $day_full = ucfirst(strtolower($day_full));
+                                                    $short_day = $day_abbrevs[$day_full] ?? $day_full;
+                                                    if (!isset($time_day_map[$time_range])) {
+                                                        $time_day_map[$time_range] = [];
+                                                    }
+                                                    if (!in_array($short_day, $time_day_map[$time_range])) {
+                                                        $time_day_map[$time_range][] = $short_day;
+                                                    }
+                                                }
+                                            }
 
-                        <?php endwhile; ?>
-                    </select>
-                    <label class="fw-bold">Month:</label>
-                    <input type="month" class="form-control w-auto" id="monthInput" value="<?= $month ?>">
-                     <label class="fw-bold">Semester:</label>
-                        <select class="form-select w-auto" id="semesterSelect">
-                            <option value="1">First</option>
-                            <option value="2">Second</option>
-                            <option value="3">Summer</option>
-                        </select>
-                    </div>
+                                            $merged_schedule = [];
+                                            foreach ($time_day_map as $time_range => $days_array) {
+                                                $sorted_days = array_values(array_intersect($week_order, $days_array));
+                                                $merged_schedule[] = implode(',', $sorted_days) . " ({$time_range})";
+                                            }
+
+                                            $days_text = implode(' | ', $merged_schedule);
+                                    ?>
+                                    <option 
+                                        value="<?= $section_id . '|' . htmlspecialchars($subject_code) ?>" 
+                                        data-days="<?= htmlspecialchars($days_text) ?>"
+                                    >
+                                        <?= $section_name ?> - <?= htmlspecialchars($subject_code) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <!-- Academic Term Widget -->
+                        <div class="input-group input-group-sm w-auto shadow-sm rounded">
+                            <span class="input-group-text bg-light border-0 fw-bold">
+                                <i class="bi bi-mortarboard text-secondary me-1"></i>
+                            </span>
+                            <select class="form-select border-0 rounded-end" id="semesterSelect" name="semester">
+                                <option value="">-- Select Term --</option>
+                                <?php while ($term = $terms_result->fetch_assoc()): ?>
+                                    <?php 
+                                        $ay_display = $term['year_start'] . ' - ' . $term['year_end'];
+                                        $label = $term['semester'];
+                                        $isActive = ($term['is_active'] == 1) ? ' (Active)' : ' (Inactive)';
+                                    ?>
+                                    <option 
+                                        value="<?= htmlspecialchars($term['term_id']) ?>" 
+                                        <?= $term['is_active'] == 1 ? 'selected' : '' ?>
+                                    >
+                                        <?= htmlspecialchars('A.Y. ' . $ay_display . ' | ' . $label . $isActive) ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            </select>
+                        </div>
+
+                        <!-- Month Widget -->
+                        <div class="input-group input-group-sm w-auto shadow-sm rounded">
+                            <span class="input-group-text bg-light border-0 fw-bold">
+                                <i class="bi bi-calendar-event text-secondary me-1"></i>
+                            </span>
+                            <input 
+                                type="month" 
+                                class="form-control border-0 rounded-end"
+                                id="monthInput" 
+                                name="month" 
+                                value="<?= $month ?>"
+                                style="min-width: 160px;"
+                            >
+                        </div>
+
+                    </form>
                     <div class="table-responsive">
                         <table id="attendanceTable" class="table table-hover">
                     <thead>
@@ -319,44 +450,15 @@ th{
                             <th>#</th>
                             <th>Student</th>
                             <th>Subject Code</th>
-                            <th>Days</th>
+                            <th>Academic Term</th>
                             <th>Present</th>
                             <th>Late</th>
                             <th>Absent</th>
                         </tr>
                     </thead>
-            <tbody>
-<?php
-$i = 1;
-foreach($teacher_sections as $section_id => $section_name){
-    $students = $students_by_section[$section_id] ?? [];
-    $subjects = $section_subject_map[$section_id] ?? [];
+                      <tbody>
 
-    foreach($students as $student){
-        foreach($subjects as $subject_code){
-            $att = $attendance[$student['s_id']][$subject_code] ?? [];
-            $present = (int)($att['present'] ?? 0);
-            $late    = (int)($att['late'] ?? 0);
-            $absent  = (int)($att['absent'] ?? 0);
-            $days_text = $att['days'] ?? '';
-
-            echo '<tr>
-                <td>'.$i++.'</td>
-                <td>'.htmlspecialchars($student['student_name']).'</td>
-                <td>'.htmlspecialchars($subject_code).'</td>
-                <td>'.htmlspecialchars($days_text).'</td>
-                <td>'.$present.'</td>
-                <td>'.$late.'</td>
-                <td>'.$absent.'</td>
-            </tr>';
-        }
-    }
-}
-?>
 </tbody>
-
-
-
 
                         </table>
                     </div>
@@ -368,97 +470,76 @@ foreach($teacher_sections as $section_id => $section_name){
 </main>
 
 <!-- Export Attendance Modal -->
-<div class="modal fade" id="setDaysModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
-    <div class="modal-content">
-      <div class="modal-header bg-success text-white">
-        <h5 class="modal-title">
+<div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="exportModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow-lg border-0 rounded-3">
+      <div class="modal-header card-header text-white">
+        <h5 class="modal-title fw-bold" id="exportModalLabel">
           <i class="bi bi-file-earmark-excel"></i> Export Attendance Report
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
 
-      <!-- Submit directly to export_attendance_reports.php -->
-      <form id="attendanceDaysForm" method="POST" action="export_attendance_reports.php">
-        <!-- Hidden inputs -->
-        <input type="hidden" name="section_id" id="attendanceSectionId">
-        <input type="hidden" name="section_name" id="attendanceSectionName">
-        <input type="hidden" name="subject_code" id="attendanceSubjectCode">
-        <input type="hidden" name="scheduled_days" id="classDaysInput">
-        <input type="hidden" name="total_days" id="totalDaysHidden">
-
-        <div class="modal-body row g-3">
-          <!-- Semester -->
-          <div class="col-md-6">
-            <label class="fw-bold">Semester:</label>
-            <select class="form-select" name="semester" id="attendanceSemester" required>
-              <option value="">-- Select Semester --</option>
-              <option value="First">First</option>
-              <option value="Second">Second</option>
-              <option value="Summer">Summer</option>
+      <div class="modal-body">
+        <form id="exportForm" class="d-flex flex-column gap-3">
+          <!-- Subject Selector -->
+          <div>
+            <label class="fw-bold mb-1">Subject:</label>
+            <select id="exportSubjectSelect" name="subject_select" class="form-select">
+              <option value="all">All Subjects</option>
+              <?php foreach ($section_subject_map as $section_id => $subjects): 
+                  $section_name = htmlspecialchars($teacher_sections[$section_id]);
+                  foreach ($subjects as $subject_code): ?>
+                    <option value="<?= $section_id . '|' . htmlspecialchars($subject_code) ?>">
+                      <?= $section_name ?> | <?= htmlspecialchars($subject_code) ?>
+                    </option>
+              <?php endforeach; endforeach; ?>
             </select>
           </div>
 
-          <!-- Subject -->
-          <div class="col-md-6">
-            <label class="fw-bold">Subject:</label>
-            <input type="text" class="form-control" name="subject_name" id="attendanceSubjectName" readonly>
+          <!-- Term Selector -->
+          <div>
+            <label class="fw-bold mb-1">Academic Term:</label>
+            <select id="exportTerm" name="semester" class="form-select">
+              <option value="">-- Select Term --</option>
+              <?php 
+              mysqli_data_seek($terms_result, 0); // rewind pointer if already used above
+              while ($term = $terms_result->fetch_assoc()):
+                  $label = $term['semester'];
+                  $ay_display = $term['year_start'].'-'.$term['year_end'];
+                  $isActive = $term['is_active'] == 1 ? ' (Active)' : '';
+              ?>
+                  <option value="<?= htmlspecialchars($term['term_id']) ?>" <?= $term['is_active']==1 ? 'selected' : '' ?>>
+                    <?= htmlspecialchars('A.Y. '.$ay_display.' | '.$label.$isActive) ?>
+                  </option>
+              <?php endwhile; ?>
+            </select>
           </div>
 
-          <!-- Section -->
-          <div class="col-md-6">
-            <label class="fw-bold">Section:</label>
-            <input type="text" class="form-control" id="attendanceSectionDisplay" readonly>
-          </div>
-            <!-- Days of the Week (Time) -->
-            <div class="col-md-6">
-            <label class="fw-bold">Days of the Week (Time):</label>
-            <input type="text" class="form-control" id="attendanceDaysOfWeek" readonly>
+          <!-- Date Range -->
+          <div class="d-flex gap-2 align-items-end">
+            <div class="flex-fill">
+              <label class="fw-bold mb-1">Start Date:</label>
+              <input type="date" name="start_date" class="form-control" required>
             </div>
-
-          <!-- Start Date -->
-          <div class="col-md-6">
-            <label class="fw-bold">Start Date:</label>
-            <input type="date" class="form-control" name="start_date" id="semesterStartDate" required>
-          </div>
-
-          <!-- End Date -->
-          <div class="col-md-6">
-            <label class="fw-bold">End Date:</label>
-            <input type="date" class="form-control" name="end_date" id="semesterEndDate" required>
-          </div>
-
-          <!-- Select Days of Week -->
-          <div class="col-md-12">
-            <label class="fw-bold">Class Days of the Week:</label>
-            <div class="btn-group d-flex flex-wrap gap-2" role="group">
-              <button type="button" class="btn btn-outline-primary day-pill" data-day="1">Mon</button>
-              <button type="button" class="btn btn-outline-primary day-pill" data-day="2">Tue</button>
-              <button type="button" class="btn btn-outline-primary day-pill" data-day="3">Wed</button>
-              <button type="button" class="btn btn-outline-primary day-pill" data-day="4">Thu</button>
-              <button type="button" class="btn btn-outline-primary day-pill" data-day="5">Fri</button>
-              <button type="button" class="btn btn-outline-primary day-pill" data-day="6">Sat</button>
-              <button type="button" class="btn btn-outline-primary day-pill" data-day="7">Sun</button>
+            <div class="flex-fill">
+              <label class="fw-bold mb-1">End Date:</label>
+              <input type="date" name="end_date" class="form-control" required>
             </div>
           </div>
+        </form>
+      </div>
 
-          <!-- Auto-Calculated Total Class Days -->
-          <div class="col-md-6">
-            <label class="fw-bold">Total Class Days:</label>
-            <input type="text" class="form-control" id="totalClassDays" readonly>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button type="submit" class="btn btn-success">
-            <i class="bi bi-download"></i> Generate & Export
-          </button>
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        </div>
-      </form>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ni w-auto btn-sm" id="exportNowBtn">
+          <i class="bi bi-file-earmark-excel"></i> Export
+        </button>
+      </div>
     </div>
   </div>
 </div>
+
+
 <!-- Toast Notification -->
 <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080">
   <div id="exportToast" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
@@ -473,7 +554,7 @@ foreach($teacher_sections as $section_id => $section_name){
 
 
 
-
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
@@ -497,62 +578,72 @@ $(document).ready(function(){
         language: { lengthMenu: "Show _MENU_ entries" }
     });
 
-    // Update hidden section name input
+
+    // 🔹 Update hidden section name input
     function updateSectionName() {
         let selectedText = $("#sectionSelect option:selected").text();
         $('#attendanceSectionName').val(selectedText);
     }
     updateSectionName(); // Initial set
 
-    // Load attendance via AJAX
-    function loadAttendance(section_id, month, semester){
-        let subject_code = $('#sectionSelect option:selected').data('subject');
-
-        if(!section_id || !month || !semester || !subject_code){
+    function loadAttendance(section_id = '', month = '', term_id = '', subject_code = '') {
+        if (!month || !term_id) {
             console.warn("Missing required filters");
             table.clear().draw();
             return;
         }
 
-        $.getJSON('reports/processes/fetch_attendance.php', 
-            {section_id: section_id, month: month, subject_code: subject_code, semester: semester}, 
-            function(data){
-                table.clear().draw();
-                let i = 1;
-                if(data.length > 0){
-                    data.forEach(student => {
-                        let dayTime = '';
-                        if(student.days_of_week){
-                            let time = '';
-                            if(student.start_time && student.end_time){
-                                time = ` (${student.start_time} - ${student.end_time})`;
-                            }
-                            dayTime = student.days_of_week + time;
-                        }
-                        table.row.add([
-                            i++,
-                            student.student_name || '',
-                            student.subject_code || '',
-                            dayTime || '',   // NEW column with days + time
-                            student.present || 0,
-                            student.late || 0,
-                            student.absent || 0
-                        ]);
-                    });
-                } else {
-                    console.log("No data returned");
-                }
-                table.draw();
+        let requestData = { month: month, term_id: term_id };
+        if (section_id) requestData.section_id = section_id;
+        if (subject_code) requestData.subject_code = subject_code;
+
+        $.getJSON('reports/processes/fetch_attendance.php', requestData, function(data) {
+            table.clear().draw();
+            let i = 1;
+
+            if(data.length > 0){
+                data.forEach(student => {
+    let combinedSubject = '';
+    if (student.subject_code && student.days_of_week) {
+        combinedSubject = `${student.subject_code} - ${student.days_of_week}`;
+    } else {
+        combinedSubject = student.subject_code || student.days_of_week || '';
+    }
+
+    table.row.add([
+        i++,
+        student.student_name || '',
+        combinedSubject,
+        student.academic_term || '—',
+        student.present || 0,
+        student.late || 0,
+        student.absent || 0
+    ]);
+});
+
             }
-        ).fail(function(xhr, status, error){
+            table.draw();
+        }).fail(function(xhr, status, error){
             console.error("AJAX Error:", status, error);
         });
     }
 
-    // On change of Section, Month or Semester
-    $('#sectionSelect, #monthInput, #semesterSelect').on('change', function(){
-        loadAttendance($('#sectionSelect').val(), $('#monthInput').val(), $('#semesterSelect').val());
+    $('#sectionSelect, #monthInput, #semesterSelect').on('change', function() {
+        let val = $('#sectionSelect').val();
+        let [section_id, subject_code] = val ? val.split('|') : ['', ''];
+        let month = $('#monthInput').val();
+        let term_id = $('#semesterSelect').val();
+
+        loadAttendance(section_id, month, term_id, subject_code);
+        updateSectionName();
     });
+
+    // Initial load
+    let initialVal = $('#sectionSelect').val();
+    let [initialSection, initialSubject] = initialVal ? initialVal.split('|') : ['', ''];
+    loadAttendance(initialSection, $('#monthInput').val(), $('#semesterSelect').val(), initialSubject);
+
+
     
 
     // ----- Export Modal -----
@@ -595,74 +686,129 @@ $(document).ready(function(){
     });
 
     $('#semesterStartDate, #semesterEndDate').on('change', calculateClassDays);
+$(document).ready(function() {
 
-    $('#openExportModal').on('click', function(){
-    let selectedOption = $('#sectionSelect option:selected');
-    let sectionText = selectedOption.text();
-    let sectionCode = sectionText.split(' - ')[0];
-    let subjectCode = selectedOption.data('subject');
-    let days        = (selectedOption.data('days') || "").toString().split(',');
-    let startTime   = selectedOption.data('start');
-    let endTime     = selectedOption.data('end');
-
-    $('#attendanceSectionId').val(selectedOption.val());
-    $('#attendanceSectionName').val(sectionCode);
-    $('#attendanceSubjectCode').val(subjectCode);
-    $('#attendanceSubjectName').val(subjectCode);
-    $('#attendanceSectionDisplay').val(sectionCode);
-
-    // Reset pills
-    $('.day-pill').removeClass('active');
-
-    // Auto-select pills
-   // Day name to number map
-let dayMap = {
-    "Mon": 1,
-    "Tue": 2,
-    "Wed": 3,
-    "Thu": 4,
-    "Fri": 5,
-    "Sat": 6,
-    "Sun": 7
-};
-
-// Auto-select pills by mapping names to numbers
-days.forEach(function(day){
-    let trimmed = day.trim();
-    let dayNum = dayMap[trimmed];
-    if(dayNum) {
-        $('.day-pill[data-day="'+dayNum+'"]').addClass('active');
-    }
-});
-
-
-    // Format time range string
-    let dayTimeDisplay = '';
-    if (days.length > 0 && startTime && endTime) {
-        let dayNames = {
-            1: "Mon", 2: "Tue", 3: "Wed", 
-            4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun"
-        };
-     let dayLabels = days.map(d => d.trim()).join(', ');
-
-        dayTimeDisplay = dayLabels + " (" + startTime + " - " + endTime + ")";
-    }
-    $('#attendanceDaysOfWeek').val(dayTimeDisplay);
-
-    // Reset hidden inputs
-    let selected = [];
-    $('.day-pill.active').each(function(){
-        selected.push($(this).data('day'));
+    // Open modal
+    $("#openExportModal").on("click", function() {
+        $("#exportModal").modal("show");
     });
-    $('#classDaysInput').val(selected.join(','));
-    $('#totalClassDays').val('');
-    $('#totalDaysHidden').val('');
 
-    $('#setDaysModal .modal-title').text('Export Attendance Report for ' + sectionCode + ' (' + subjectCode + ')');
-    $('#setDaysModal').modal('show');
+document.getElementById("exportNowBtn").addEventListener("click", function() {
+    const form = document.getElementById("exportForm");
+    const formData = new FormData(form);
+
+    const subject = formData.get("subject_select");
+    const semester = formData.get("semester");
+    const start_date = formData.get("start_date");
+    const end_date = formData.get("end_date");
+
+    // --- Basic Validation ---
+    if(!start_date || !end_date){
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'warning',
+            title: 'Missing Fields!',
+            text: 'Please fill all required fields: Start Date, and End Date.',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true
+        });
+        return;
+    }
+
+    const startDateObj = new Date(start_date);
+    const endDateObj = new Date(end_date);
+
+    if(startDateObj > endDateObj){
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'error',
+            title: 'Start date cannot be later than End date.',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true
+        });
+        return;
+    }
+
+    // --- Check max 18 weeks (126 days) ---
+    const diffDays = Math.ceil((endDateObj - startDateObj) / (1000 * 60 * 60 * 24)) + 1;
+    const maxDays = 18 * 7; // 18 weeks
+    if(diffDays > maxDays){
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'error',
+            title: 'Date range exceeds 18 weeks!',
+            text: `Selected period is ${diffDays} days, max allowed is 126 days.`,
+            showConfirmButton: false,
+            timer: 4000,
+            timerProgressBar: true
+        });
+        return;
+    }
+
+    // --- Optional: check total hours per subject (52-54hrs) ---
+    // Assume schedule info is available as data attributes on form
+    const scheduleHoursPerWeek = parseFloat(form.dataset.hoursPerWeek) || 3; // default 3hrs/week
+    const totalWeeks = Math.ceil(diffDays / 7);
+    const totalHours = scheduleHoursPerWeek * totalWeeks;
+
+    if(totalHours < 52 || totalHours > 54){
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'warning',
+            title: 'Total hours out of expected range!',
+            text: `Total scheduled hours: ${totalHours}h (expected 52-54h).`,
+            showConfirmButton: true
+        });
+        return;
+    }
+
+    // --- Trigger download ---
+    this.disabled = true;
+    this.innerHTML = `<i class="bi bi-hourglass-split"></i> Exporting...`;
+
+    const exportUrl = "reports/processes/export_attendance_reports.php";
+    const formPost = document.createElement("form");
+    formPost.method = "POST";
+    formPost.action = exportUrl;
+    formPost.target = "_blank";
+
+    formData.forEach((value, key) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = key;
+        input.value = value;
+        formPost.appendChild(input);
+    });
+
+    document.body.appendChild(formPost);
+    formPost.submit();
+    document.body.removeChild(formPost);
+
+    this.disabled = false;
+    this.innerHTML = `<i class="bi bi-send"></i> Export`;
+
+    // Close modal
+    bootstrap.Modal.getInstance(document.getElementById("exportModal")).hide();
+
+    // --- Friendly success alert ---
+    Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: 'Attendance report is downloading!',
+        showConfirmButton: false,
+        timer: 2500,
+        timerProgressBar: true
+    });
 });
 
-
+});
     $('#attendanceDaysForm').on('submit', function(e){
     e.preventDefault();
 

@@ -19,6 +19,23 @@ $term_result = $conn->query("SELECT term_id FROM academic_terms WHERE is_active 
 if ($term_result && $term_result->num_rows > 0) {
     $term_row = $term_result->fetch_assoc();
     $term_id = $term_row['term_id'];
+    // get readable term/academic year label for responses
+$termLabel = 'N/A';
+$termInfoStmt = $conn->prepare("
+    SELECT t.semester, ay.year_start, ay.year_end
+    FROM academic_terms t
+    JOIN academic_years ay ON t.ay_id = ay.ay_id
+    WHERE t.term_id = ? LIMIT 1
+");
+$termInfoStmt->bind_param("i", $term_id);
+$termInfoStmt->execute();
+$termInfoRes = $termInfoStmt->get_result();
+if ($termInfoRes && $termInfoRes->num_rows > 0) {
+    $tr = $termInfoRes->fetch_assoc();
+    $termLabel = "A.Y. {$tr['year_start']}-{$tr['year_end']} | {$tr['semester']}";
+}
+$termInfoStmt->close();
+
 } else {
     echo json_encode(['success' => false, 'message' => 'No active term found.']);
     exit();
@@ -58,10 +75,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['teacher_action'] ?? '') ==
     $start_time  = new DateTime($schedule['start_time']);
     $end_time    = new DateTime($schedule['end_time']);
 
-    if ($currentTime < $start_time || $currentTime > $end_time) {
-        echo json_encode(['success' => false, 'message' => 'No class schedule this time.']);
-        exit();
-    }
+   $allowed_start = (clone $start_time)->modify('-15 minutes');
+
+if ($currentTime < $allowed_start) {
+    echo json_encode(['success' => false, 'message' => 'Attendance logging is allowed only 15 minutes before the class starts.']);
+    exit();
+}
+
+if ($currentTime > $end_time) {
+    echo json_encode(['success' => false, 'message' => 'Class has already ended.']);
+    exit();
+}
+
 
     // ✅ Get section code
     $secStmt = $conn->prepare("SELECT section_code FROM sections WHERE section_id = ?");
@@ -167,42 +192,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['subject_code'], $_POS
         $updateTeacher->execute();
         $updateTeacher->close();
 
-        // ✅ Update students who timed-in but no timeout
+        // ✅ Update students who timed-in but no timeout (active term only)
         $updateStudents = $conn->prepare("
-            UPDATE attendance
-            SET time_out = NOW()
-            WHERE subject_id = ? AND subject_code = ? AND section_code = ? 
-              AND DATE(time_in) = ? AND term_id = ? AND time_out IS NULL
+            UPDATE attendance a
+            JOIN students_sections ss ON a.s_id = ss.s_id AND ss.section_id = ? AND ss.term_id = ?
+            LEFT JOIN subject_enrollments se ON a.s_id = se.s_id AND se.subject_code = ? AND se.section_code = ? AND se.term_id = ?
+            SET a.time_out = NOW()
+            WHERE a.subject_id = ? AND a.subject_code = ? AND a.section_code = ? 
+              AND DATE(a.time_in) = ? AND a.term_id = ? AND a.time_out IS NULL
         ");
-        $updateStudents->bind_param("isssi", $subject_id, $subject_code, $section_code, $currentDate, $term_id);
+        $updateStudents->bind_param("iisiissssi", $section_id, $term_id, $subject_code, $section_code, $term_id, $subject_id, $subject_code, $section_code, $currentDate, $term_id);
         $updateStudents->execute();
         $updateStudents->close();
 
-        // ✅ Insert absent students
+        // ✅ Insert absent students (active term only)
         $studentsStmt = $conn->prepare("
-            SELECT s.s_id
+            SELECT DISTINCT s.s_id
             FROM students s
-            JOIN students_sections ss ON s.s_id = ss.s_id
-            WHERE ss.section_id = ? 
-            UNION
-
-            SELECT s.s_id
-            FROM students s
-            JOIN subject_enrollments se ON s.s_id = se.s_id
-            WHERE se.subject_id = (
-                SELECT subject_id 
-                FROM sections_schedules 
-                WHERE subject_code = ? 
-                  AND section_id = ? 
-                  AND term_id = ?
-                LIMIT 1
-            ) 
-              AND se.term_id = ? 
-              AND se.is_status = 1 
-              AND se.enrollment_status = 'Enrolled'
+            LEFT JOIN students_sections ss ON s.s_id = ss.s_id AND ss.section_id = ? AND ss.term_id = ?
+            LEFT JOIN subject_enrollments se ON s.s_id = se.s_id AND se.subject_code = ? AND se.section_code = ? AND se.term_id = ?
+            WHERE (ss.s_id IS NOT NULL OR se.s_id IS NOT NULL)
         ");
-        $studentsStmt->bind_param("isiii", $section_id, $subject_code, $section_id, $term_id, $term_id);
-
+        $studentsStmt->bind_param("iisis", $section_id, $term_id, $subject_code, $section_code, $term_id);
         $studentsStmt->execute();
         $studentsRes = $studentsStmt->get_result();
 
@@ -239,6 +250,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['subject_code'], $_POS
     }
     exit();
 }
+
 
 /* ======================================================
    CASE 3: Student QR Scan
@@ -297,8 +309,11 @@ $stmt = $conn->prepare("
         s.s_id, 
         s.s_fname, 
         s.s_lname, 
+        s.s_mname,
+        s.s_suffix,
+        g.expires_at,  -- ✅ Added
         COALESCE(sec.section_code, se.section_code) AS section_code,
-        COALESCE(sec.section_id, sec_se.section_id) AS section_id, -- ✅ unified section_id
+        COALESCE(sec.section_id, sec_se.section_id) AS section_id,
         CASE 
             WHEN ss.s_id IS NOT NULL THEN 'Regular' 
             WHEN se.s_id IS NOT NULL THEN 'Irregular' 
@@ -319,7 +334,7 @@ $stmt = $conn->prepare("
        AND se.is_status = 1
        AND se.enrollment_status = 'Enrolled'
     LEFT JOIN sections sec_se
-        ON se.section_code = sec_se.section_code -- ✅ map irregulars' section_code → section_id
+        ON se.section_code = sec_se.section_code
     WHERE g.generated_qrcode = ?
       AND (ss.s_id IS NOT NULL OR se.s_id IS NOT NULL)
     LIMIT 1
@@ -344,6 +359,27 @@ if ($result->num_rows === 0) {
 }
 
 $student = $result->fetch_assoc();
+
+// ✅ Now check QR expiration properly
+if (!empty($student['expires_at'])) {
+    $expireTime = new DateTime($student['expires_at']);
+    if ($currentTime > $expireTime) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'QR code has expired.'
+        ]);
+        exit();
+    }
+}
+
+
+
+if ($result->num_rows === 0) {
+    echo json_encode(['success' => false, 'message' => "Student isn't enrolled in this class."]);
+    exit();
+}
+
+
     $student_id   = $student['s_id'];
     $section_code = $student['section_code'];
     $student_section_id = $student['section_id'];
@@ -374,10 +410,13 @@ $stmt->bind_param("siis", $subject_code, $teacher_id, $term_id, $currentDay);
     $end_time    = new DateTime($schedule['end_time']);
     $tenMinutesAfterEnd = (clone $end_time)->modify('+10 minutes');
 
-    if ($currentTime < $start_time) {
-        echo json_encode(['success' => false, 'message' => 'Class has not started yet.']);
-        exit();
-    }
+   $allowed_start = (clone $start_time)->modify('-15 minutes');
+
+if ($currentTime < $allowed_start) {
+    echo json_encode(['success' => false, 'message' => 'Attendance can only be logged 15 minutes before the class starts.']);
+    exit();
+}
+
     if ($currentTime > $tenMinutesAfterEnd) {
         echo json_encode(['success' => false, 'message' => 'Attendance is closed.']);
         exit();
@@ -419,17 +458,24 @@ $stmt->bind_param("siis", $subject_code, $teacher_id, $term_id, $currentDay);
         $stmt->bind_param("ii", $attendance['attendance_id'], $subject_id);
         $stmt->execute();
 
-        echo json_encode([
-            'success' => true,
-            'message' => 'Time-out recorded.',
-            'data' => [
-                'id' => $attendance['attendance_id'],
-                'name' => $student['s_fname'] . ' ' . $student['s_lname'],
-                'course_section' => $section_code,
-                'time_out' => date('M j, Y g:i A'),
-                'status' => $attendance['status']
-            ]
-        ]);
+     echo json_encode([
+    'success' => true,
+    'message' => 'Time-out recorded.',
+    'data' => [
+        'id' => $attendance['attendance_id'],
+       'name' => $student['s_fname'] . ' ' . $student['s_mname'] . ' ' . $student['s_lname'] . ' ' . $student['s_suffix'],
+        's_fname' => $student['s_fname'],
+        's_mname' => $student['s_mname'],
+        's_lname' => $student['s_lname'],
+        's_suffix' => $student['s_suffix'],
+        'course_section' => $section_code,
+        'time_in' => $attendance['time_in'] ? date('M j, Y g:i A', strtotime($attendance['time_in'])) : null,
+        'time_out' => date('M j, Y g:i A'),
+        'status' => $attendance['status'],
+        'term' => $termLabel
+    ]
+]);
+
         exit();
     }
 
@@ -447,16 +493,23 @@ $stmt->bind_param("siis", $subject_code, $teacher_id, $term_id, $currentDay);
     $stmt->execute();
 
     echo json_encode([
-        'success' => true,
-        'message' => "Attendance logged as $status.",
-        'data' => [
-            'id' => $conn->insert_id,
-            'name' => $student['s_fname'] . ' ' . $student['s_lname'],
-            'course_section' => $section_code,
-            'time_in' => date('M j, Y g:i A'),
-            'status' => $status
-        ]
-    ]);
+    'success' => true,
+    'message' => "Attendance logged as $status.",
+    'data' => [
+        'id' => $conn->insert_id,
+        'name' => $student['s_fname'] . ' ' . $student['s_mname'] . ' ' . $student['s_lname'] . ' ' . $student['s_suffix'],
+        's_fname' => $student['s_fname'],
+        's_mname' => $student['s_mname'],
+        's_lname' => $student['s_lname'],
+        's_suffix' => $student['s_suffix'],
+        'course_section' => $section_code,
+        'time_in' => date('M j, Y g:i A'),
+        'time_out' => null,
+        'status' => $status,
+        'term' => $termLabel
+    ]
+]);
+
     exit(); 
 }
 

@@ -1,7 +1,6 @@
 <?php
-require_once '../includes/db.php'; // Adjust path if necessary
+require_once '../includes/db.php';
 
-// Ensure student is logged in
 if (!isset($_SESSION['user_id'])) {
     header('Location: ../../login.php');
     exit();
@@ -9,21 +8,76 @@ if (!isset($_SESSION['user_id'])) {
 
 $student_id = $_SESSION['user_id'];
 
-// Fetch all attendance for this student
+// ✅ Get filters
+$selected_month = isset($_GET['month']) ? intval($_GET['month']) : '';
+$selected_term_id = isset($_GET['term_id']) ? intval($_GET['term_id']) : '';
+
+// ✅ Fetch all academic terms dynamically
+$term_dropdown_query = "
+    SELECT 
+        t.term_id,
+        CONCAT('A.Y. ', y.year_start, '-', y.year_end, ' | ', t.semester) AS term_name
+    FROM academic_terms t
+    INNER JOIN academic_years y ON t.ay_id = y.ay_id
+    ORDER BY y.year_start DESC, t.semester ASC
+";
+$term_dropdown = $conn->query($term_dropdown_query);
+
+// ✅ Fetch active academic term
+$active_term_query = "
+    SELECT 
+        CONCAT('A.Y. ', y.year_start, '-', y.year_end, ' | ', t.semester) AS active_term
+    FROM academic_terms t
+    INNER JOIN academic_years y ON t.ay_id = y.ay_id
+    WHERE t.is_active = 1
+    LIMIT 1
+";
+$active_term_result = $conn->query($active_term_query);
+$active_term = ($active_term_result && $active_term_result->num_rows > 0)
+    ? $active_term_result->fetch_assoc()['active_term']
+    : 'A.Y. N/A | Term Not Set';
+
+// ✅ Base Query (shows all if no filters)
 $attendance_query = "
-SELECT a.s_id, a.subject_code, a.section_code, a.time_in, a.time_out, a.status
+SELECT 
+    a.s_id,
+    s.idcode,
+    a.subject_code,
+    a.section_code,
+    a.time_in,
+    a.time_out,
+    a.status,
+    CONCAT('A.Y. ', y.year_start, '-', y.year_end, ' | ', t.semester) AS term_name
 FROM attendance a
+INNER JOIN students s ON a.s_id = s.s_id
+LEFT JOIN academic_terms t ON a.term_id = t.term_id
+LEFT JOIN academic_years y ON t.ay_id = y.ay_id
 WHERE a.s_id = ?
-ORDER BY a.time_in DESC
 ";
 
+$params = [$student_id];
+$types = "i";
+
+// ✅ Apply filters dynamically
+if (!empty($selected_month)) {
+    $attendance_query .= " AND MONTH(a.time_in) = ?";
+    $params[] = $selected_month;
+    $types .= "i";
+}
+if (!empty($selected_term_id)) {
+    $attendance_query .= " AND t.term_id = ?";
+    $params[] = $selected_term_id;
+    $types .= "i";
+}
+
+$attendance_query .= " ORDER BY a.time_in DESC";
+
+// ✅ Execute query safely
 $stmt = $conn->prepare($attendance_query);
-$stmt->bind_param("i", $student_id);
+$stmt->bind_param($types, ...$params);
 $stmt->execute();
 $attendance_history = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
-
-
 ?>
 
 <!DOCTYPE html>
@@ -32,14 +86,8 @@ $stmt->close();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Attendance Reports</title>
-
-    <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <!-- DataTables CSS -->
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 </head>
-
 <style>
 /* Card styling */
 .card {
@@ -128,179 +176,265 @@ $stmt->close();
 }
 
 /* Button styles */
-.btn-primary {
-    background: linear-gradient(145deg, var(--primary) 0%, var(--secondary) 100%) !important;
+.btn{
+    padding:0.75rem;
     border: none !important;
-    padding: 0.875rem 2rem !important;
     font-weight: 500 !important;
     letter-spacing: 0.5px !important;
     border-radius: 8px !important;
     transition: none !important;
     transform: none !important;
     cursor: pointer !important;
-    /* position: relative !important; */
     overflow: hidden !important;
 }
+/* 3D Hover Effect */
+.btn:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
 
-.btn-primary:disabled {
+/* Optional: active press effect */
+.btn:active {
+    transform: translateY(0px) scale(0.98);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+.btn-primary{
+    background:var(--primary) !important;
+}
+
+.btn:disabled {
     background: #6c757d !important;
     cursor: not-allowed !important;
 }
 
 </style>
+
 <body>
 <!-- Attendance History -->
-<div class="d-flex justify-content-between align-items-center px-4 py-3 ">
-                    <h1 class="h3 text-primary mt-2 mb-sm-0 fw-bold">
-                        <i class="bi bi-calendar3-week me-2"></i>Attendance History
-                    </h1>
-                    <div class="d-flex align-items-center">
-                        <div class="bg-white shadow-sm rounded-pill px-4 py-2 text-muted small">
-                            <i class="bi bi-clock-history me-1"></i>
-                            Last Updated: <span id="last-updated">Just now</span>
-                        </div>
-                    </div>
-</div>
-<div class="container-fluid mt-3 d-flex justify-content-center">
-    <div class="card shadow-sm w-100">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="card-title mb-0">
-                <i class="bi bi-clock-history me-2"></i>All Attendance Records
-            </h5>
-            <div class="d-flex justify-content-start mb-3 align-items-center">
-    <label for="monthFilter" class="text-white me-2 fw-semibold">Filter by Month:</label>
-    <select id="monthFilter" class="form-select w-auto">
-        <option value="">All Months</option>
-        <?php 
-        // Generate month options
-        for ($m=1; $m<=12; $m++) {
-            $monthName = date('F', mktime(0,0,0,$m,1));
-            echo "<option value='$m'>$monthName</option>";
-        }
-        ?>
-    </select>
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center px-4 py-3">
+    <div class="mb-2 mb-md-0">
+        <h1 class="h3 text-primary mt-2 mb-1 fw-bold">
+            <i class="bi bi-calendar3-week me-2"></i> Attendance History
+        </h1>
+        <small class="text-muted fw-semibold"><?= htmlspecialchars($active_term) ?></small>
+    </div>
+
+    <div class="bg-white shadow-sm rounded-pill px-4 py-2 text-muted small d-flex align-items-center">
+        <i class="bi bi-clock-history me-1"></i> Last Updated:
+        <span id="last-updated" class="ms-1 fw-semibold text-dark">
+            <?= htmlspecialchars($_SESSION['last_updated']); ?>
+        </span>
+    </div>
 </div>
 
+
+<div class="container-fluid mt-3">
+    <div class="card shadow-sm">
+       <div class="card-header">
+    <div class="row align-items-center">
+        <!-- Card Title spans full width -->
+        <div class="col-12 mb-2">
+            <h4 class="card-title mb-0">
+                <i class="bi bi-clock-history text-warning"></i> Attendance Records
+            </h4>
         </div>
+
+        <!-- Filters: stacked on mobile, side by side on md+ -->
+        <div class="col-12 col-md-6 mb-2 mb-md-0">
+            <label for="termFilter" class="text-white fw-semibold">Academic Term:</label>
+            <select id="termFilter" class="form-select form-select-sm">
+                <option value="">All Terms</option>
+                <?php while ($row = $term_dropdown->fetch_assoc()): ?>
+                    <option value="<?= htmlspecialchars($row['term_id']) ?>"
+                        <?= ($selected_term_id == $row['term_id']) ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($row['term_name']) ?>
+                    </option>
+                <?php endwhile; ?>
+            </select>
+        </div>
+
+        <div class="col-12 col-md-6 mb-2 mb-md-0">
+            <label for="monthFilter" class="text-white fw-semibold">Month:</label>
+            <select id="monthFilter" class="form-select form-select-sm">
+                <option value="">All Months</option>
+                <?php 
+                for ($m = 1; $m <= 12; $m++) {
+                    $monthName = date('F', mktime(0,0,0,$m,1));
+                    $selected = ($selected_month == $m) ? 'selected' : '';
+                    echo "<option value='$m' $selected>$monthName</option>";
+                }
+                ?>
+            </select>
+        </div>
+    </div>
+</div>
+
+
         <div class="card-body">
+              <!-- ✅ Generate Reports Button -->
+<div class="d-flex flex-wrap justify-content-center gap-2 mt-1 ">
+    <!-- Send to Email Button -->
+    <button id="generateReportBtn" class="btn btn-sm btn-primary d-flex align-items-center">
+        <i class="bi bi-envelope me-2"></i>Send to Email
+    </button>
+
+    <!-- Placeholder for Print & PDF Buttons -->
+    <div id="exportButtons" class="d-flex flex-wrap gap-2"></div>
+</div>
+
             <div class="table-responsive">
-                <table id="attendanceTable" class="table table-hover table-bordered">
-                    <thead>
+          
+                <table id="attendanceTable" class="table table-hover table-bordered align-middle">
+                    <thead class="card-header text-white">
                         <tr>
-                            <th>Student ID</th>
+                            <th class="text-center dtr-control">ID</th>
                             <th>Subject</th>
                             <th>Section</th>
                             <th>Date</th>
                             <th>Time</th>
+                            <th>Academic Term</th>
                             <th>Status</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($attendance_history as $att): ?>
-                        <?php
+                        <?php foreach ($attendance_history as $att): 
                             $status = $att['status'];
-                            $badgeClass = ($status === 'Present') ? 'bg-success' : (($status === 'Absent') ? 'bg-danger' : 'bg-secondary');
+                            $badgeClass = match ($status) {
+                                'Present' => 'bg-success',
+                                'Absent' => 'bg-danger',
+                                'Late' => 'bg-warning text-dark',
+                                'Excuse' => 'bg-primary',
+                                default => 'bg-secondary'
+                            };
                         ?>
                         <tr>
-                            <td><?= htmlspecialchars($att['s_id']) ?></td>
+                            <td><?= htmlspecialchars($att['idcode']) ?></td>
                             <td><?= htmlspecialchars($att['subject_code']) ?></td>
                             <td><?= htmlspecialchars($att['section_code']) ?></td>
-                            <td><?= htmlspecialchars($att['time_in'] ? date('M d, Y', strtotime($att['time_in'])) : 'N/A') ?></td>
+                            <td><?= htmlspecialchars(date('M d, Y', strtotime($att['time_in']))) ?></td>
                             <td>
-                                <?= htmlspecialchars($att['time_in'] ? date('h:i A', strtotime($att['time_in'])) : '-') ?>
-                                -
+                                <?= htmlspecialchars(date('h:i A', strtotime($att['time_in']))) ?> -
                                 <?= htmlspecialchars($att['time_out'] ? date('h:i A', strtotime($att['time_out'])) : '-') ?>
                             </td>
-                            <td>
-                                <span class="badge <?= $badgeClass ?>">
-                                    <?= htmlspecialchars($status) ?>
-                                </span>
-                            </td>
+                            <td><?= htmlspecialchars($att['term_name'] ?? $active_term) ?></td>
+                            <td><span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($status) ?></span></td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
-
-            <!-- ✅ Generate Reports Button -->
-            <div class="mt-5 text-start">
-                <button id="generateReportBtn" class="btn btn-primary">
-                    <i class="bi bi-download me-2"></i>Generate Reports
-                </button>
-            </div>
         </div>
     </div>
 </div>
 
-<!-- ✅ Bootstrap Toast (Top End) -->
-<div class="toast-container position-fixed top-0 end-0 p-3">
-  <div id="toastMsg" class="toast text-bg-success" role="alert" data-bs-delay="3000">
-    <div class="d-flex">
-      <div class="toast-body"></div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-    </div>
-  </div>
-</div>
+<!-- ✅ JS -->
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<!-- CSS -->
+<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<!-- JS -->
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+<script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
+
 
 <script>
+$(document).ready(function () {
+const table = $('#attendanceTable').DataTable({
+  responsive: {
+    details: {
+        type: 'column',
+        target: 0   // first column
+    }
+},
+columnDefs: [
+    { className: 'dtr-control', targets: 0 }, // expand icon
+    { orderable: false, targets: 0 }
+],
+
+    order: [[3, "desc"]],
+    pageLength: 25,
+    lengthChange: true,
+    dom: `
+        <'mt-2 d-flex flex-column flex-md-row justify-content-between align-items-start mb-2'
+            <'me-0 me-md-2 mb-2 mb-md-0'l>
+            <'d-flex flex-column flex-md-row'fB>
+        >
+        rt
+        ip
+    `,
+      buttons: [
+        {
+            extend: 'copy',
+            text: 'Copy',
+            className: 'btn btn-sm  btn-outline-primary'
+        },
+        {
+            extend: 'excel',
+            text: 'Excel',
+            className: 'btn btn-sm btn-outline-success'
+        },
+        {
+            extend: 'pdf',
+            text: 'PDF',
+            className: 'btn btn-sm btn-outline-danger'
+        },
+        {
+            extend: 'print',
+            text: 'Print',
+            className: 'btn btn-sm btn-outline-secondary'
+        }
+    ],
+    scrollX: false,
+    scrollY: '50vh',
+    responsive: true,
+    ordering: true,
+    scrollCollapse: true,
+    paging: true,
+    searching: true,
+    info: true,
+    autoWidth: false
+});
+
+    // Move the buttons container into our placeholder
+    table.buttons().container().appendTo('#exportButtons');
+
+    // Filters
+    $('#monthFilter, #termFilter').on('change', function() {
+        const month = $('#monthFilter').val();
+        const term = $('#termFilter').val();
+        const url = new URL(window.location.href);
+        if (month) url.searchParams.set('month', month); else url.searchParams.delete('month');
+        if (term) url.searchParams.set('term_id', term); else url.searchParams.delete('term_id');
+        window.location.href = url.toString();
+    });
+});
+
 document.getElementById("generateReportBtn").addEventListener("click", function() {
     fetch("/student/attendance_reports/generate_report.php", {
         method: "POST",
-        body: new URLSearchParams({ student_id: "<?= $student['s_id'] ?? '' ?>" })
+        body: new URLSearchParams({ student_id: "<?= $student_id ?>" })
     })
     .then(res => res.json())
     .then(data => {
-        let toastEl = document.getElementById("toastMsg");
-        let toast = new bootstrap.Toast(toastEl);
-
         if (data.status === "success") {
-            toastEl.classList.remove("text-bg-danger");
-            toastEl.classList.add("text-bg-success");
-            toastEl.querySelector(".toast-body").textContent =
-                "Report generated! " + (data.emailSent ? "Email sent ✅" : "Email failed ❌");
-            toast.show();
-
+            showAlert(data.emailSent ? "Report generated! Email sent ✅" : "Report generated! Email failed ❌", "success");
         } else {
-            toastEl.classList.remove("text-bg-success");
-            toastEl.classList.add("text-bg-danger");
-            toastEl.querySelector(".toast-body").textContent = data.message || "Error generating report";
-            toast.show();
+            showAlert(data.message || "Error generating report", "error");
         }
     })
-    .catch(err => console.error(err));
-});
-</script>
-
-
-
-<!-- Bootstrap 5 JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-<!-- jQuery and DataTables JS -->
-<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-
-<script>
-$(document).ready(function() {
-    $('#attendanceTable').DataTable({
-        "order": [[3, "desc"]], // Order by date descending
-        "pageLength": 25,
-        "lengthMenu": [10, 25, 50, 100],
-        "responsive": true
+    .catch(err => {
+        console.error(err);
+        showAlert("Something went wrong!", "error");
     });
-    $('#monthFilter').on('change', function() {
-    const selectedMonth = $(this).val();
-    const url = new URL(window.location.href);
-    if (selectedMonth) {
-        url.searchParams.set('month', selectedMonth);
-    } else {
-        url.searchParams.delete('month');
-    }
-    window.location.href = url.toString();
 });
 
-});
 </script>
 </body>
 </html>

@@ -69,7 +69,9 @@ LEFT JOIN (
 
 WHERE ss.teacher_id = ? AND ss.term_id = ?
 GROUP BY sec.section_id, d.degree_id, d.degree_code, d.degree_name
-ORDER BY d.degree_name, sec.section_code
+ORDER BY sec.year_level ASC, d.degree_name DESC, sec.section_code DESC
+
+
 
 ";
 $stmt = $conn->prepare($sections_query);
@@ -99,10 +101,7 @@ while ($row = $result->fetch_assoc()) {
         'irregular_count'=> (int)$row['irregular_count']
     ];
 }
-
 ?>
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -132,11 +131,12 @@ html, body {
 
 /* Main content area */
 main {
-    max-width: calc(100% - 10px);
+    margin-left: 5px;
+    width: calc(100% - 260px);
     padding: 0;
     overflow-x: hidden;
+     position: relative; /* ensures z-index stacking context */
 }
-
 
 
 /* Container adjustments */
@@ -152,31 +152,10 @@ h2.mb-4 {
     padding: 1rem;
 }
 
-.degree-card {
-    border-radius: var(--card-border-radius);
-    box-shadow: 0 4px 6px rgba(38, 59, 134, 0.07);
-    border: none;
-    transition: transform 0.3s;
-    position: relative;
-    overflow: hidden;
-    margin-bottom: 1.5rem;
-    max-width: calc(100% - 230px);
-    top: -10px;
-    background: var(--quaternary);
-}
 
-
-
-.degree-header {
-    background: linear-gradient(145deg, var(--primary) 0%, var(--secondary) 100%) !important;
-    color: white;
-    border-radius: 0 !important;
-    padding: 1rem 1.5rem;
-}
 
 .degree-body {
-    padding: 1.5rem;
-    max-width: calc(100% - 2rem);
+    padding: 1rem;
 }
 
 .student-list {
@@ -266,34 +245,18 @@ h2.mb-4 {
 .section-card {
     border-radius: var(--card-border-radius);
     transition: transform 0.3s;
-    background: linear-gradient(145deg, #fcfafaff, #f0f0f0);
+    background: linear-gradient(145deg, #ffffffff, #ffffffff);
     box-shadow: 2px 5px 10px #bebebe,
                 -2px -5px 10px #ffffff;
     margin-bottom: 1rem;
 
-    width: 100%;   /* ✅ fill col-md-4 completely */
-    height: 100%;  /* ✅ optional: equal card heights */
+    width: 100%;   
+    height: 100%;  
 }
 .section-card:hover {
     transform: translateY(-2px);
 }
 
-
-/* 2 per row on medium screens */
-@media (max-width: 992px) {
-  .section-card {
-    flex: 0 0 calc(50% - 1rem);
-    max-width: calc(50% - 1rem);
-  }
-}
-
-/* 1 per row on small screens */
-@media (max-width: 768px) {
-  .section-card {
-    flex: 0 0 100%;
-    max-width: 100%;
-  }
-}
 
 
 
@@ -459,75 +422,83 @@ h2.mb-4 {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.filterSections{
-    justify-content: center;
-    width:80%;
-    gap:5px;
+span.input-group-text{
+    background: var(--primary);
 }
+
+.clear-3d {
+    color: #012f58ff; /* base color */
+    text-shadow: 
+        1px 1px 0 #081b7933,
+        2px 2px 2px #081b7933,
+        3px 3px 3px #081b7933;
+    transition: transform 0.2s, color 0.2s;
+}
+
+.clear-3d:hover {
+    color: #dc3545;                 /* change color on hover */
+    transform: translateY(-2px) scale(1.2); /* lift and scale for 3D effect */
+    text-shadow: 
+        2px 2px 1px #00000044,
+        3px 3px 2px #00000033,
+        4px 4px 3px #00000022;      /* stronger shadows for depth on hover */
+}
+
+
 
 </style>
 <link rel="stylesheet" href="assets/css/content.css">
 </head>
 <body>
-<main class="container-fluid my-4">
-    <h2 class="fw-bold">My Class Lists</h2>
-     <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-4 ">
-                    <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                    <li class="breadcrumb-item active">Subjects</li>
-                </ol>
-            </nav>
-    <?php if(empty($degrees)): ?>
-        <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No assigned sections yet.</div>
-    <?php else: ?>
-        <div class="filterSections">
-    <div class="row g-3">
-        <!-- Degree Filter -->
-        <div class="col-lg-6 col-md-6 col-sm-12">
-            <div class="input-group">
-                <span class="input-group-text" style="background: var(--primary); color: var(--tertiary);">
-                    <i class="fa-solid fa-filter"></i>
-                </span>
-                <select id="degreeFilter" class="form-select">
-                    <option value="">All Degrees</option>
-                    <?php foreach ($degrees as $degree): ?>
-                        <option value="<?= htmlspecialchars($degree['code']); ?>">
-                            <?= htmlspecialchars($degree['code'] . ' - ' . $degree['name']); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-        </div>
+<main>
+    <div class="container-fluid classContainer">
+    <div class="row align-items-center mb-3 g-2 flex-wrap">
+    <div class="col-md-8 col-12">
+        <h2 class="mb-1 fw-bold">My Class Lists</h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+                <li class="breadcrumb-item active">Class Lists</li>
+            </ol>
+        </nav>
+    </div>
 
-        <!-- Search Bar with Icon -->
-        <div class="col-lg-6 col-md-6 col-sm-12">
-            <div class="input-group">
-                <span class="input-group-text" id="search-icon" style="background: var(--primary); color: var(--tertiary);">
-                    <i class="fa-brands fa-searchengin fa-lg"></i>
-                </span>
-                <input 
-                    type="text" 
-                    id="searchSection" 
-                    class="form-control" 
-                    placeholder="Search section code..."
-                    aria-label="Search section"
-                    aria-describedby="search-icon"
-                >
-            </div>
+<div class="col-md-4 col-12 d-flex justify-content-end mt-2 mt-md-0 text-end">
+    <!-- Search widget -->
+    <div class="input">
+        <div class="input-group">
+            <span class="input-group-text text-warning">
+                <i class="bi bi-search"></i>
+            </span>
+            <div class="position-relative">
+        <!-- Input field with padding for icons -->
+        <input type="text" id="searchSection" class="form-control  pe-5" placeholder="Search...">
+        <!-- Clear "x" button on the right inside input -->
+       <span id="clearSearch" class="position-absolute top-50 end-0 translate-middle-y pe-3" style="cursor: pointer;">
+    <i class="bi bi-x text-secondary clear-3d"></i>
+</span>
+
+    </div>
         </div>
     </div>
 </div>
 
+        </div>
+
+    <?php if(empty($degrees)): ?>
+        <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No assigned sections yet.</div>
+    <?php else: ?>
+      
         <?php foreach($degrees as $degree): ?>
                 <div class="degree-body">
                     <!-- Alert container (place this above the degree filter and search bar) -->
                     <div id="noResultsAlert" class="alert alert-info d-none">
                         <i class="bi bi-info-circle me-2"></i>No sections found.
                     </div>
-                    <div class="row g-3 d-flex flex-wrap">
+                   <div class="row g-4">
                         <?php foreach($degree['sections'] as $section): ?>
-                            <div class="col-md-4">
-                                <div class="section-card">
+                           <div class="col-6 col-md-6 col-sm-12">
+                                <div class="section-card class-card-wrapper">
                                     <div class="section-header d-flex justify-content-between align-items-center">
                                         <h6 class="mb-0 fw-bold"><?php echo htmlspecialchars($section['code']); ?></h6>
                                         <button class="btn-show-students btn-primary" data-bs-toggle="modal" data-bs-target="#studentModal<?= $section['id']; ?>">
@@ -566,9 +537,9 @@ h2.mb-4 {
                         <?php endforeach; ?>
                     </div>
                 </div>
-            <!-- </div> -->
         <?php endforeach; ?>
     <?php endif; ?>
+    </div>
 </main>
 
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
@@ -674,63 +645,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-document.addEventListener('DOMContentLoaded', function() {
-    const degreeFilter = document.getElementById('degreeFilter');
-    const searchInput = document.getElementById('searchSection');
-    const noResultsAlert = document.getElementById('noResultsAlert');
+$(document).ready(function() {
+    // Search input
+    $('#searchSection').on('input', function() {
+        var query = $(this).val().toLowerCase();
+        var visibleCount = 0;
 
-    function filterSections() {
-        const selectedDegree = degreeFilter.value.toLowerCase();
-        const searchText = searchInput.value.toLowerCase();
-        let anyMatch = false;
-
-        // Loop through each degree container
-        document.querySelectorAll('.degree-body').forEach(degreeBody => {
-            const row = degreeBody.querySelector('.row');
-            const sections = Array.from(row.querySelectorAll('.col-md-4'));
-
-            const matchingSections = [];
-            const nonMatchingSections = [];
-
-            sections.forEach(sectionCol => {
-                const sectionCode = sectionCol.querySelector('h6').textContent.toLowerCase();
-                const degreeCard = degreeBody.closest('.degree-body');
-                const sectionDegreeCode = degreeCard.previousElementSibling?.querySelector('h5')?.textContent.toLowerCase() || '';
-
-                const matchesDegree = !selectedDegree || sectionDegreeCode.includes(selectedDegree);
-                const matchesSearch = sectionCode.includes(searchText);
-
-                if (matchesDegree && matchesSearch) {
-                    matchingSections.push(sectionCol);
-                } else {
-                    nonMatchingSections.push(sectionCol);
-                }
-            });
-
-            // Clear the row
-            row.innerHTML = '';
-
-            // Append matching sections first, then non-matching
-            matchingSections.forEach(el => row.appendChild(el));
-            nonMatchingSections.forEach(el => row.appendChild(el));
-
-            // Hide non-matching sections
-            nonMatchingSections.forEach(el => el.style.display = 'none');
-            matchingSections.forEach(el => el.style.display = '');
-
-            if (matchingSections.length > 0) anyMatch = true;
+        $('.class-card-wrapper').each(function() {
+            var text = $(this).text().toLowerCase();
+            if (text.indexOf(query) > -1) {
+                $(this).show();
+                visibleCount++;
+            } else {
+                $(this).hide();
+            }
         });
 
-        // Show/hide "No sections found" alert
-        noResultsAlert.classList.toggle('d-none', anyMatch);
-    }
+        // Show or hide alert
+        if (visibleCount === 0) {
+            $('#noResultsAlert').removeClass('d-none');
+        } else {
+            $('#noResultsAlert').addClass('d-none');
+        }
+    });
 
-    degreeFilter.addEventListener('change', filterSections);
-    searchInput.addEventListener('input', filterSections);
-
-    // Initial filter to reset layout
-    filterSections();
+    // Clear button functionality
+    $('#clearSearch').on('click', function() {
+        $('#searchSection').val('').focus();  // Clear input and focus
+        $('.class-card-wrapper').show();       // Show all sections
+        $('#noResultsAlert').addClass('d-none'); // Hide alert
+    });
 });
+
 </script>
 </body>
 </html>

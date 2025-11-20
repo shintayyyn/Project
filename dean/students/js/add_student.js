@@ -2,194 +2,143 @@ $(document).ready(function() {
     const $addForm = $('#addStudentForm');
     if (!$addForm.length) return;
 
-    // Name field validation
-    $('.name-input').on('input', function() {
-        let value = $(this).val();
-        value = value.replace(/[^A-Za-z\s-]/g, '');
-        value = value.toLowerCase().split(/[\s-]+/).map(word => 
-            word.charAt(0).toUpperCase() + word.slice(1)
-        ).join(' ');
-        $(this).val(value);
-    });
-
-    // Phone number validation
-    $('input[name="s_cnum"]').on('input', function() {
-        let value = $(this).val().replace(/\D/g, '');
-        if (value.length > 11) {
-            value = value.substring(0, 11);
-        }
-        $(this).val(value);
-        
-        if (value.length === 11 && value.startsWith('09')) {
-            $(this).removeClass('is-invalid');
-            this.setCustomValidity('');
-        } else {
-            $(this).addClass('is-invalid');
-            this.setCustomValidity('Must be 11 digits starting with 09');
-        }
-    });
-
-    // Form submission
-    $addForm.on('submit', function(e) {
-        e.preventDefault();
-        if (!this.checkValidity()) {
-            e.stopPropagation();
-            $(this).addClass('was-validated');
-            return;
-        }
-
-        const $submitBtn = $(this).find('button[type="submit"]');
-        const formData = new FormData(this);
-
-        // Append parent form data
-        const parentFormData = new FormData($('#addParentForm')[0]);
-        for (let [key, value] of parentFormData.entries()) {
-            formData.append(key, value);
-        }
-
-        $submitBtn.prop('disabled', true);
-
+    // ================= Unassigned Counter =================
+    function updateUnassignedCounter() {
         $.ajax({
-            url: '/Project/dean/students/processes/add_student.php',
+            url: '/dean/students/processes/get_unassigned_count.php',
+            dataType: 'json'
+        }).done(function(res) {
+            if (res.success) {
+                $('#unassignedCounter').text(res.count);
+            }
+        }).fail(function() {
+            $('#unassignedCounter').text('0');
+        });
+    }
+
+    // Initial load
+    updateUnassignedCounter();
+
+    // ================= Init Parent Status =================
+    const existingParent = $('#parentFullnameInput').val();
+    if (existingParent && existingParent !== 'Solo (No Parent)') {
+        // Has a real parent name
+        $('#parentStatusSelect').val('with_parent');
+        $('#parentFullnameInput').prop('disabled', false);
+        $('#remarksInput').val('Living with Parents/Guardians');
+        $('#parent_status').val('with_parent');
+        $('#is_solo').val(1); // living with parent
+    } else {
+        // Solo case
+        $('#parentStatusSelect').val('solo');
+        $('#parentFullnameInput').val('Solo (No Parent)').prop('disabled', true);
+        $('#remarksInput').val('Solo (No Parent)');
+        $('#parent_status').val('solo');
+        $('#is_solo').val(2); // solo
+    }
+
+    // ================= Solo Parent Selection =================
+    $('#parentStatusSelect').on('change', function() {
+        const selected = $(this).val();
+        if (selected === 'solo') {
+            $('#parentFullnameInput').val('Solo (No Parent)').prop('disabled', true);
+            $('#remarksInput').val('Solo (No Parent)');
+            $('#parent_status').val('solo');
+            $('#is_solo').val(2); // solo
+        } else {
+            $('#parentFullnameInput').prop('disabled', false).val('');
+            $('#remarksInput').val('Living with Parents/Guardians');
+            $('#parent_status').val('with_parent');
+            $('#is_solo').val(1); // living with parent
+        }
+    });
+
+    // ================= Regular/Irregular Toggle =================
+    $('#isRegularInput').on('change', function() {
+        $('#is_regular').val($(this).prop('checked') ? 2 : 1);
+    });
+
+    // ================= Form submit =================
+  $addForm.on('submit', function (e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+
+    // ✅ Force is_solo value at submit time
+    if (soloCheckbox && soloCheckbox.checked) {
+        formData.set('is_solo', 2);
+        formData.set('remarks', 'Solo (No Parent)');
+    } else {
+        formData.set('is_solo', 1);
+        formData.set('remarks', 'Living with Parents/Guardians');
+    }
+
+        // ✅ Regular / Irregular
+        formData.set('is_regular', $('#is_regular').val());
+        formData.set('is_solo', $('#is_solo').val());
+
+        // ========== AJAX ==========
+        $.ajax({
+            url: '/dean/students/processes/add_student.php',
             type: 'POST',
             data: formData,
             processData: false,
             contentType: false,
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    // Close modal and reset form
-                    $('#addStudentModal').modal('hide');
-                    $addForm[0].reset();
-                    $('#addParentForm')[0].reset();
-                    $addForm.removeClass('was-validated');
-                    showAlert('success', 'Student added successfully');
-                    
-                    // Check if "No students found" row exists and remove it
-                    const noDataRow = $('#studentsTableBody tr td[colspan]');
-                    if (noDataRow.length) {
-                        noDataRow.parent().remove();
-                    }
+            dataType: 'json'
+        }).done(function(res) {
+            if (res.success) {
+                // ✅ Ensure modal closes fully
+                $('#addStudentModal').modal('hide');
+                $('.modal-backdrop').remove();
+                $('body').removeClass('modal-open').css('padding-right', '');
 
-                    // Create and add new row
-                    const newRow = createStudentRow(response.data);
-                    $('#studentsTableBody').prepend(newRow);
-                    
-                    // Highlight new row briefly
-                    const $newRow = $(`tr[data-student-id="${response.data.s_id}"]`);
-                    $newRow.addClass('highlight-new');
-                    setTimeout(() => $newRow.removeClass('highlight-new'), 3000);
-                } else {
-                    showAlert('error', response.message || 'Failed to add student');
+                // Optional: show success alert
+                showAlert('success', res.message);
+
+                // ✅ Update parent detail panel immediately
+                if (res.data && res.data.parent_fullname) {
+                    $('#detailParent').html(
+                        `<span class="badge bg-info">${res.data.parent_fullname}</span>`
+                    );
                 }
-            },
-            error: function(xhr) {
-                showAlert('error', 'Server error occurred while adding student');
-                console.error('Add failed:', xhr.responseText);
-            },
-            complete: function() {
-                $submitBtn.prop('disabled', false);
+
+                // ✅ Full page reload (optional)
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+
+                updateUnassignedCounter();
+            } else {
+                showAlert('error', res.message);
             }
+        }).fail(function(xhr) {
+            console.error(xhr.responseText);
+            showAlert('error', 'Server error');
+        }).always(function() {
+            $submitBtn.prop('disabled', false);
         });
     });
 
-    function createStudentRow(data) {
-        return `
-            <tr data-student-id="${data.s_id}">
-                <td>${data.s_id}</td>
-                <td class="student-lname">${data.s_lname}</td>
-                <td class="student-fname">${data.s_fname}</td>
-                <td class="text-center student-mname">${data.s_mname ? data.s_mname[0] + '.' : ''}</td>
-                <td class="text-center student-suffix">${data.s_suffix || ''}</td>
-                <td class="text-center student-gender">${data.s_gender}</td>
-                <td class="student-bdate">${formatDate(data.s_bdate)}</td>
-                <td class="text-center">${calculateAge(data.s_bdate)}</td>
-                <td class="student-cnum text-center">${data.s_cnum}</td>
-                <td class="text-truncate student-email">${data.s_email}</td>
-                <td class="td-password">
-                    <div class="password-wrapper">
-                        <span class="dots">••••••••</span>
-                        <span class="real-password" style="display: none;">${data.s_password}</span>
-                        <button type="button" class="eye-button">
-                            <i class="bi bi-eye"></i>
-                        </button>
-                    </div>
-                </td>
-                <td class="text-center student-status">
-                    <span class="badge bg-${data.s_status === 'active' ? 'success' : 'danger'}">
-                        ${capitalizeFirst(data.s_status)}
-                    </span>
-                </td>
-                <td class="text-center student-degree">${data.degree_code || ''}</td>
-                <td class="text-center">
-                    <div class="btn-group btn-group-sm">
-                        <button type="button" class="btn btn-primary px-2 btn-edit-student" data-bs-toggle="modal" data-bs-target="#editStudentModal" data-student-id="${data.s_id}">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button class="btn btn-danger px-2 btn-delete-student" data-student-id="${data.s_id}">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>`;
-    }
-
-    // Helper functions
+    // ================= Helpers =================
     function showAlert(type, message) {
-        const icon = type === 'success' ? 'check-circle-fill' : 'exclamation-circle-fill';
-        const alertHtml = `
-            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                <i class="bi bi-${icon} me-2"></i>
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-        `;
-        
-        $('#alertContainer').html(alertHtml);
-        setTimeout(() => {
-            $('.alert').fadeOut('slow', function() { $(this).remove(); });
-        }, 3000);
+        Swal.fire({
+            icon: type,
+            title: type === 'success' ? 'Success!' : 'Error!',
+            text: message,
+            timer: 3000,
+            showConfirmButton: false,
+            toast: true,
+            position: 'top-end'
+        });
     }
 
-    function showNotification(type, message) {
-        const notificationHtml = `
-            <span class="notification notification-${type}">
-                ${message}
-            </span>`;
-        $('#notificationContainer').html(notificationHtml);
-        setTimeout(() => $('.notification').fadeOut(), 5000);
+    function calculateAge(bdate) {
+        const dob = new Date(bdate);
+        if (isNaN(dob)) return '';
+        const diff = Date.now() - dob.getTime();
+        const ageDate = new Date(diff);
+        return Math.abs(ageDate.getUTCFullYear() - 1970);
     }
 
-    function formatDate(dateString) {
-        const [year, month, day] = dateString.split('-');
-        return `${month}/${day}/${year}`;
-    }
-
-    function calculateAge(birthDate) {
-        const birth = new Date(birthDate);
-        const today = new Date();
-        let age = today.getFullYear() - birth.getFullYear();
-        const monthDiff = today.getMonth() - birth.getMonth();
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-            age--;
-        }
-        return age;
-    }
-
-    function capitalizeFirst(string) {
-        return string.charAt(0).toUpperCase() + string.slice(1);
-    }
+    $('<style>@keyframes highlightNew{from{background-color:rgba(25,135,84,.2);}to{background-color:transparent;}}.highlight-new{animation:highlightNew 3s ease-out;}</style>').appendTo('head');
 });
-
-// Add this CSS to your stylesheet
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes highlightNew {
-        from { background-color: rgba(25, 135, 84, 0.1); }
-        to { background-color: transparent; }
-    }
-    .highlight-new {
-        animation: highlightNew 3s ease-out;
-    }
-`;
-document.head.appendChild(style);

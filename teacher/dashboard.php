@@ -91,10 +91,12 @@ switch ($page) {
         $content = 'profile/index.php';
         $title = 'Profile';
         break;
-    case 'attendance':
-        $content = 'reports/index.php';
-        $title = 'Attendance';
+    case 'analytics':
+        $content = 'analytics/index.php';
+        $title = 'Analytics Report';
         break;
+
+
     default:
         $content = 'dashboard/index.php';
         $title = 'Dashboard';
@@ -126,7 +128,8 @@ switch ($page) {
     <script type="text/javascript" src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/responsive/2.2.9/js/dataTables.responsive.min.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/responsive/2.2.9/js/responsive.bootstrap5.min.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
     <style>
         :root {
             --primary: #033A70;
@@ -142,67 +145,147 @@ switch ($page) {
         *{
             font-family: 'Baloo 2', 'Nunito', 'Poppins', sans-serif;
         }
-        
-            .btn-warning {
-      background: linear-gradient(135deg, var(--primary), var(--hover-blue));
-      color: white;
-      border: none;
-      width: 100%;
-      padding: 12px;
-      border-radius: 8px;
-      font-weight: 600;
-      transition: 0.3s;
-    }
+   .btn-ni {
+  position: relative;
+  background: var(--tertiary);
+  color: var(--primary);
+  border: none;
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.25s ease-in-out;
+  box-shadow: 0 5px 0 var(--primary), 0 6px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(0);
+}
 
-    .btn-warning:hover {
-      background: var(--hover-blue);
-    }
+/* Hover: slightly lift */
+.btn-ni:hover {
+  background: var(--tertiary);
+  color: var(--primary);
+  box-shadow: 0 7px 0 var(--primary), 0 10px 15px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px);
+}
 
+/* Active: 3D push with new color scheme */
+.btn-ni:active {
+  background: var(--primary);
+  color: #fff;
+  transform: translateY(4px);
+  box-shadow: 0 3px 0 rgba(245, 245, 245, 0.7), 0 4px 10px rgba(255, 255, 255, 0.4);
+}
 
-        .btn-warning::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 0;
-            height: 0;
-            background: rgba(255,255,255,0.2);
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            transition: width 0.6s, height 0.6s;
-        }
+/* Ripple effect */
+.btn-ni::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s, opacity 0.6s;
+  z-index: 0;
+}
 
-        .btn-warning:active::after {
-            width: 200px;
-            height: 200px;
-            opacity: 0;
-        }
-        .sidebar {
-            width: var(--sidebar-width);
-            min-height: 100vh;
-            background: linear-gradient(145deg, var(--primary) 0%, var(--secondary) 100%);
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100vh;
-            padding-top: 1rem;
-            box-shadow: 4px 0 10px rgba(0,0,0,0.1);
-            z-index: 1000;
-            transition: transform var(--transition-speed) ease;
-            overflow-y: auto;
-        }
-        
-        .sidebar-header {
-            padding: 1.5rem;
-            color: white;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        
-        .sidebar-header h3 {
-            margin: 0;
-            font-size: 1.5rem;
-            font-weight: 600;
-        }
+.btn-ni:active::after {
+  width: 200px;
+  height: 200px;
+  opacity: 0;
+}
+
+/* Keep text/icons above ripple */
+.btn-ni{
+  position: relative;
+  z-index: 1;
+}
+
+* {
+    scrollbar-width: none !important;  /* Firefox */
+}
+*::-webkit-scrollbar {
+    display: none !important;  /* Chrome, Safari, Edge */
+}
+       .sidebar {
+    width: var(--sidebar-width);
+    height: 100vh;
+    background: linear-gradient(145deg, var(--primary) 0%, var(--secondary) 100%);
+    position: fixed;
+    top: 0; left: 0;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 4px 0 10px rgba(0,0,0,0.1);
+}
+
+.sidebar-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    flex-shrink: 0;
+}
+
+.sidebar-scrollable {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* Footer pinned at bottom */
+.sidebar-footer {
+    padding: 1.5rem;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    flex-shrink: 0;
+}
+
+/* Custom scrollbar */
+.sidebar-scrollable::-webkit-scrollbar {
+    width: 6px;
+}
+.sidebar-scrollable::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.2);
+    border-radius: 10px;
+}
+.sidebar-scrollable::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.4);
+}
+
+/* Avatar circle */
+.profile-image2 {
+    width: 85px;
+    height: 85px;
+    border: 4px solid white;
+    background: linear-gradient(145deg, var(--secondary) 0%, var(--primary) 100%);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.8rem;
+    font-weight: 600;
+    margin-bottom: 10px; /* Space below avatar */
+}
+
+.profile-avatar-wrapper2 {
+    display: flex;
+    justify-content: center;
+}
+
+/* Badge */
+.teacher-badge {
+    margin-bottom: 10px; /* Space below badge */
+    font-weight: 500;
+    color: white;
+}
+
+/* Switch button */
+#switchDashboardBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
         
         .teacher-badge {
             display: inline-block;
@@ -227,18 +310,11 @@ switch ($page) {
             margin-bottom: 0.5rem;
         }
         
-        .nav-section a {
-            display: flex;
-            align-items: center;
-            padding: 0.75rem 1.5rem;
-            color: white;
-            text-decoration: none;
-            transition: all 0.3s ease;
-        }
         
-        .nav-section a:hover {
-            background: rgba(255,255,255,0.1);
-        }
+          .nav-section a { display: flex; align-items: center; color: rgba(255,255,255,0.8); text-decoration: none; padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 0.25rem; transition: all 0.2s; }
+   
+        
+        .nav-section a:hover { background: rgba(255,255,255,0.1); color: white; }
         
         .nav-section a.active {
             background: rgba(255,255,255,0.2);
@@ -366,35 +442,6 @@ switch ($page) {
                 transform: translateX(0);
             }
         }
-        /* Custom Scrollbar Styles */
-::-webkit-scrollbar {
-    width: 8px;
-    background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-    background: rgba(108, 117, 125, 0.5);
-    border-radius: 10px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: rgba(108, 117, 125, 0.8);
-    border: 2px solid transparent;
-    background-clip: padding-box;
-}
-
-::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.4);
-    border-radius: 10px;
-}
-
-/* For Firefox */
-* {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(108, 117, 125, 0.5) rgba(255, 255, 255, 0.4);
-}
     </style>
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css">
@@ -402,79 +449,89 @@ switch ($page) {
 <body>
     <div class="container-fluid">
         <div class="row">
-            <!-- Sidebar -->
-            <div class="sidebar">
-                <div class="sidebar-header">
-    <h3><?php echo htmlspecialchars($teacher['t_fname'] . ' ' . $teacher['t_lname']); ?></h3>
-    <div class="teacher-badge">
-        Teacher
-        <?php if (!empty($advisory_sections)) : ?>
-            <span class="badge bg-success ms-2">Adviser</span>
+           <!-- Sidebar -->
+<div class="sidebar">
+    <div class="sidebar-header text-center">
+        <!-- Profile Avatar -->
+        <div class="profile-avatar-wrapper2">
+            <div class="profile-image2" style="background:var(--tertiary); color:var(--primary)">
+                <?php 
+                $fname = $teacher['t_fname'];
+                $lname = $teacher['t_lname'];
+                $initials = strtoupper(substr($fname, 0, 1) . substr($lname, 0, 1));
+                echo htmlspecialchars($initials);
+                ?>
+            </div>
+        </div>
+
+        <div class="teacher-badge">
+            Teacher
+            <?php if (!empty($advisory_sections)) : ?>
+                <span class="badge bg-success ms-2">Adviser</span>
+            <?php endif; ?>
+        </div>
+
+        <!-- ✅ Switch Panel only visible if is_dean = 1 -->
+        <?php if (!empty($teacher['is_dean']) && (int)$teacher['is_dean'] === 1): ?>
+            <div class="mt-2 justify-content-center text-center">
+                <button id="switchDashboardBtn" class="btn bg-warning w-auto btn-sm">
+                    <i class="fa-solid fa-repeat"></i> Dean Panel
+                </button>
+            </div>
         <?php endif; ?>
     </div>
 
-    <!-- ✅ Switch Panel only visible if is_dean = 1 -->
-    <?php if (!empty($teacher['is_dean']) && (int)$teacher['is_dean'] === 1): ?>
-        <div class="mt-2 justify-content-center">
-            <button id="switchDashboardBtn" class="btn bg-warning w-auto">
-                <i class="fa-solid fa-repeat"></i> Switch Panel
-            </button>
+    <!-- Navigation Sections -->
+     <div class="sidebar-scrollable">
+             <div class="nav-section">
+        <div class="nav-section-label">Navigation</div>
+        <a href="?page=dashboard" class="<?php echo ($page === 'dashboard') ? 'active' : ''; ?>">
+            <i class="bi bi-speedometer2"></i> Dashboard
+        </a>
+        <a href="?page=schedule" class="<?php echo ($page === 'schedule') ? 'active' : ''; ?>">
+            <i class="bi bi-calendar3"></i> My Schedule
+        </a>
+        <a href="?page=subjects" class="<?php echo ($page === 'subjects') ? 'active' : ''; ?>">
+            <i class="bi bi-book"></i> My Subjects
+        </a>
+        <a href="?page=sections" class="<?php echo ($page === 'sections') ? 'active' : ''; ?>">
+            <i class="bi bi-file-earmark-text"></i> Sections
+        </a>
+        <a href="?page=approve_absent" class="<?php echo ($page === 'approve_absent') ? 'active' : ''; ?>">
+            <i class="bi bi-file-earmark-text"></i> Approve Excuses
+        </a>
+        <?php if ($is_adviser): ?>
+            <a href="?page=advisory_class" class="<?php echo ($page === 'advisory_class') ? 'active' : ''; ?>">
+                <i class="bi bi-person-lines-fill"></i> My Advisory Class
+            </a>
+        <?php endif; ?>
+    </div>
+
+    <div class="nav-section">
+        <div class="nav-section-label">Account</div>
+        <a href="?page=profile" class="<?php echo ($page === 'profile') ? 'active' : ''; ?>">
+            <i class="bi bi-person"></i> Profile
+        </a>
+    </div>
+
+    <div class="nav-section">
+    <div class="nav-section-label">Reports</div>
+        <a href="?page=reports" class="<?php echo ($page === 'reports') ? 'active' : ''; ?>">
+            <i class="bi bi-file-earmark-text"></i> Attendance
+        </a>
+         <a href="?page=analytics" class="<?php echo ($page === 'analytics') ? 'active' : ''; ?>">
+           <i class="bi bi-graph-up-arrow"></i> Analytics Report
+        </a>
+        <hr class="bg-white">
+        <div class="sidebar-footer">
+            <a href="../logout.php">
+                <i class="bi bi-box-arrow-left"></i> Logout
+            </a>
         </div>
-    <?php endif; ?>
+    </div>
+     </div>
 </div>
 
-
-                <div class="nav-section">
-                    <div class="nav-section-label">Navigation</div>
-                    <a href="?page=dashboard" class="<?php echo ($page === 'dashboard') ? 'active' : ''; ?>">
-                        <i class="bi bi-speedometer2"></i>
-                        Dashboard
-                    </a>
-                    <a href="?page=schedule" class="<?php echo ($page === 'schedule') ? 'active' : ''; ?>">
-                        <i class="bi bi-calendar3"></i>
-                        My Schedule
-                    </a>
-                    <a href="?page=subjects" class="<?php echo ($page === 'subjects') ? 'active' : ''; ?>">
-                        <i class="bi bi-book"></i>
-                        My Subjects
-                    </a>
-                    <a href="?page=sections" class="<?php echo ($page === 'sections') ? 'active' : ''; ?>">
-                        <i class="bi bi-file-earmark-text"></i>
-                        Sections
-                    </a>
-                    <a href="?page=approve_absent" class="<?php echo ($page === 'approve_absent') ? 'active' : ''; ?>">
-                        <i class="bi bi-file-earmark-text"></i>
-                        Approve Excuses
-                    </a>
-                    <?php if ($is_adviser): ?>
-                        <a href="?page=advisory_class" class="<?php echo ($page === 'advisory_class') ? 'active' : ''; ?>">
-                            <i class="bi bi-person-lines-fill"></i>
-                            My Advisory Class
-                        </a>
-                    <?php endif; ?>
-                </div>
-                <div class="nav-section">
-                    <div class="nav-section-label">Account</div>
-                    <a href="?page=profile" class="<?php echo ($page === 'profile') ? 'active' : ''; ?>">
-                        <i class="bi bi-person"></i>
-                        Profile
-                    </a>
-                </div>
-                <div class="nav-section">
-                    <div class="nav-section-label">Reports</div>
-                     <a href="?page=attendance" class="<?php echo ($page === 'attendance') ? 'active' : ''; ?>">
-                        <i class="bi bi-file-earmark-text"></i>
-                        Attendance
-                    </a>
-                   <hr class="bg-white">
-                     <div class="sidebar-footer">
-                    <a href="../logout.php">
-                        <i class="bi bi-box-arrow-left"></i>
-                        Logout
-                    </a>
-                </div>
-                </div>
-            </div>
             <!-- Content -->
             <div class="content">
                 <?php include $content; ?>

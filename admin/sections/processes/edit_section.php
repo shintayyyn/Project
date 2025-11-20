@@ -77,14 +77,17 @@ try {
     }
 
     // Commit transaction
-    $conn->commit();
+ // Commit transaction
+$conn->commit();
 
-    echo json_encode([
-        'success' => true,
-        'section_code' => $section_code,
-        'year_level' => $year_level,
-        'max_students' => $max_students
-    ]);
+echo json_encode([
+    'success' => true,
+    'message' => 'Section updated successfully',  // <-- Added message
+    'section_code' => $section_code,
+    'year_level' => $year_level,
+    'max_students' => $max_students
+]);
+
 
 } catch (Exception $e) {
     $conn->rollback();

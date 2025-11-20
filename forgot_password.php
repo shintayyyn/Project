@@ -7,15 +7,28 @@ session_start();
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Forgot Password - Attendify</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;700&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+  
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
   <style>
+    *{
+            font-family: 'Baloo 2', 'Nunito', 'Poppins', sans-serif;
+        }
+         :root {
+      --primary: #033A70;
+      --accent: #FFCB05;
+      --background-light: #EDF8FD;
+      --border-light: #D0EEFC;
+      --hover-blue: #3E7DCA;
+    }
     body {
+      background:var(--background-light);
       margin: 0;
       padding: 0;
+      font-family: Arial, sans-serif;
       overflow-x: hidden;
-      font-family: 'Roboto', sans-serif;
-      background: #f0f6fa;
     }
 
     .container-fluid {
@@ -26,6 +39,7 @@ session_start();
 
     /* Left side */
     .left-panel {
+      margin-left: -20px;
       flex: 1;
       background: #033A70;
       color: white;
@@ -35,6 +49,7 @@ session_start();
       align-items: center;
       padding: 3rem;
       text-align: center;
+      cursor: none;
     }
 
     .left-panel .icon {
@@ -60,31 +75,47 @@ session_start();
       display: flex;
       justify-content: center;
       align-items: center;
-      background: #f9fcff;
       padding: 2rem;
+      animation: slideUp 0.4s ease-out;
     }
 
+    @keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
     .card {
-      width: 100%;
-      max-width: 400px;
-      border: none;
-      border-radius: 12px;
-      box-shadow: 0px 6px 15px rgba(0,0,0,0.1);
-      background: white;
+     max-width: 450px;
+    width: 100%;
+    background: white;
+    border-radius: 1rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    overflow: hidden;
+  
+    }
+    .card-body{
+       padding: 2rem;
+      background: var(--background-light);
     }
 
     .card-header {
-      background: #033A70;
+     background: var(--primary);
       color: white;
       text-align: center;
       padding: 1rem;
-      border-top-left-radius: 12px;
-      border-top-right-radius: 12px;
     }
 
-    .form-control {
+   .form-control {
+      padding: 12px 15px 12px 65px;
       border-radius: 8px;
-      padding: 12px 15px 12px 40px;
+      border: 1px solid var(--border-light);
+      background: white;
     }
 
     .input-group-text {
@@ -123,7 +154,32 @@ session_start();
         flex: unset;
         width: 100%;
       }
+      .left-panel{
+         width: 110%;
+      }
     }
+    body::-webkit-scrollbar{
+    display: none;
+}
+ .input-icon {
+     background: linear-gradient(135deg, var(--primary), var(--hover-blue));
+      color: white;
+      font-size:20px;
+      margin-left: -10px;
+    }
+    .login-link {
+      display: block;
+      text-align: center;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    .login-link:hover {
+      text-decoration: underline;
+    }
+  
   </style>
 </head>
 <body>
@@ -143,24 +199,22 @@ session_start();
         <h4>Forgot Password</h4>
       </div>
       <div class="card-body">
-        <!-- Step 1: ID + Email -->
         <div id="step1">
           <div class="mb-3 position-relative">
-            <span class="input-group-text"><i class="bi bi-person-badge"></i></span>
-            <input type="text" id="user_id" class="form-control" placeholder="Enter ID">
+            <span class="input-group-text input-icon"><i class="bi bi-person-badge"></i></span>
+            <input type="text" id="user_id" class="form-control" placeholder="Enter ID" required>
           </div>
           <div class="mb-3 position-relative">
-            <span class="input-group-text"><i class="bi bi-envelope"></i></span>
-            <input type="email" id="email" class="form-control" placeholder="Enter Email">
+            <span class="input-group-text input-icon"><i class="bi bi-envelope"></i></span>
+            <input type="email" id="email" class="form-control" placeholder="Enter Email" required>
           </div>
           <button id="send-otp" class="btn btn-primary w-100">Send OTP</button>
         </div>
 
-        <!-- Step 2: OTP -->
         <div id="step2" style="display:none;">
           <div class="mb-3 position-relative">
-            <span class="input-group-text"><i class="bi bi-key"></i></span>
-            <input type="text" id="otp" class="form-control" placeholder="Enter OTP">
+            <span class="input-group-text input-icon"><i class="bi bi-key"></i></span>
+            <input type="text" id="otp" class="form-control" placeholder="Enter OTP" required>
           </div>
           <button id="verify-otp" class="btn btn-primary w-100">Verify OTP</button>
         </div>
@@ -179,7 +233,7 @@ session_start();
         </div>
 
         <div class="small-text">
-          <a href="login.php">Back to Login</a>
+          <a href="login.php" class="login-link">Back to Login</a>
         </div>
       </div>
     </div>
@@ -187,7 +241,7 @@ session_start();
 </div>
 
 <!-- Toast Container -->
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+<div class="position-fixed top-0 end-0 p-3" style="z-index: 11">
   <div id="toast-container"></div>
 </div>
 
@@ -256,6 +310,7 @@ $("#save-password").click(function(){
   }, "json");
 });
 </script>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

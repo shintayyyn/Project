@@ -30,10 +30,10 @@ center.loaded,
 
 
 /* Hide scrollbars globally */
-* {
+body {
     scrollbar-width: none !important;  /* Firefox */
 }
-*::-webkit-scrollbar {
+body::-webkit-scrollbar {
     display: none !important;  /* Chrome, Safari, Edge */
 }
 

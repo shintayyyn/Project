@@ -22,6 +22,27 @@ $stmt->bind_param("i", $_SESSION['user_id']);
 $stmt->execute();
 $teacher = $stmt->get_result()->fetch_assoc();
 $stmt->close();
+
+// Fetch degree_code from degrees table based on teacher's department
+$degree_code = null;
+if (!empty($teacher['t_department'])) {
+    $stmt2 = $conn->prepare("
+        SELECT degree_code 
+        FROM degrees 
+        WHERE degree_id = ?
+        LIMIT 1
+    ");
+    $stmt2->bind_param("i", $teacher['t_department']); // assuming t_department stores degree_id
+    $stmt2->execute();
+    $result = $stmt2->get_result();
+    if ($result->num_rows > 0) {
+        $degree = $result->fetch_assoc();
+        $degree_code = $degree['degree_code'];
+    }
+    $stmt2->close();
+}
+
+// Now $degree_code contains the teacher's degree code, or null if not found
 ?>
 
 <head>
@@ -68,7 +89,6 @@ h2.mb-4 {
     border-radius: var(--card-border-radius);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 8px 16px rgba(0, 0, 0, 0.08);
     transition: transform var(--transition-speed), box-shadow var(--transition-speed);
-    background: var(--quaternary);
     margin-bottom: 1rem;
 }
 
@@ -149,12 +169,12 @@ h2.mb-4 {
     transition: all var(--transition-speed);
        background: var(--background);
 
+
 }
 
 .form-control:focus, .form-select:focus {
     border-color: var(--primary);
     box-shadow: 0 0 0 4px rgba(61, 82, 160, 0.1);
-       background: var(--background);
 
 }
 
@@ -232,6 +252,10 @@ h2.mb-4 {
 .alert.show {
     animation: slideIn 0.3s ease-out;
 }
+
+.otp-input{
+    width: 45px;
+}
 </style>
 
 <main>
@@ -248,8 +272,15 @@ h2.mb-4 {
                             ?>
                         </div>
                         <div class="profile-info">
-                            <h1><?php echo htmlspecialchars($teacher['t_fname'] ?? '') . ' ' . htmlspecialchars($teacher['t_lname'] ?? ''); ?></h1>
-                            <p><?php echo htmlspecialchars($teacher['t_department'] ?? ''); ?> Department</p>
+                            <h1>
+                            <?php 
+                            echo htmlspecialchars($teacher['t_fname'] ?? '');
+                            if(!empty($teacher['t_mname'])) echo ' ' . strtoupper(substr($teacher['t_mname'],0,1)) . '.';
+                            echo ' ' . htmlspecialchars($teacher['t_lname'] ?? '');
+                            if(!empty($teacher['t_suffix'])) echo ' ' . htmlspecialchars($teacher['t_suffix']);
+                            ?>
+                            </h1>
+                            <p><?php echo htmlspecialchars($degree_code ?? ''); ?> Department</p>
                         </div>
                     </div>
                     
@@ -317,13 +348,13 @@ h2.mb-4 {
                                 <div class="col-md-6">
                                     <div class="form-group mb-3">
                                         <label class="form-label">Department</label>
-                                        <input type="text" class="form-control" name="department" value="<?php echo htmlspecialchars($teacher['t_department'] ?? ''); ?>" required>
+                                        <input type="text" class="form-control" name="department" value="<?php echo htmlspecialchars($degree_code ?? ''); ?>" disabled>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="form-group mb-3">
                                         <label class="form-label">Status</label>
-                                        <select class="form-select" name="status" required>
+                                        <select class="form-select" name="status" disabled>
                                             <option value="active" <?php echo $teacher['t_status'] == 'active' ? 'selected' : ''; ?>>Active</option>
                                             <option value="inactive" <?php echo $teacher['t_status'] == 'inactive' ? 'selected' : ''; ?>>Inactive</option>
                                         </select>
@@ -337,9 +368,21 @@ h2.mb-4 {
                                     </div>
                                 </div>
                             </div>
+                           <div class="row align-items-center">
+    <div class="col-6 text-start">
+        <button type="button" class="btn btn-primary" id="viewAttendanceButton">
+            View My Attendance
+        </button>
+    </div>
+    <div class="col-6 text-end">
+        <button type="button" class="btn btn-primary" id="saveButton">
+            Save Changes
+        </button>
+    </div>
+</div>
 
-                            <div class="text-end" style="margin-top: -25px;">
-                                <button type="button" class="btn btn-primary" id="saveButton">Save Changes</button>
+
+                           
                             </div>
                         </form>
                     </div>
@@ -348,6 +391,27 @@ h2.mb-4 {
         </div>
     </div>
 </main>
+
+<!-- Modal -->
+<div class="modal fade" id="attendanceModal" tabindex="-1" aria-labelledby="attendanceModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header card-header text-white">
+        <h5 class="modal-title fw-bold" id="attendanceModalLabel">Teacher Attendance</h5>
+        <button type="button" class="btn bg-warning" data-bs-dismiss="modal" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body" id="analyticsContentModal">
+        <div class="text-center py-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <div class="mt-2">Loading attendance data...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <!-- OTP Verification Modal -->
 <div class="modal fade" id="otpModal" tabindex="-1" aria-hidden="true">
@@ -360,12 +424,12 @@ h2.mb-4 {
       <div class="modal-body text-center">
         <p>Enter the 6-digit OTP sent to your new email:</p>
         <div class="d-flex justify-content-center gap-2 mb-2">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
-          <input type="text" maxlength="1" class="otp-input form-control text-center" style="width:40px;">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
+          <input type="text" maxlength="1" class="otp-input form-control text-center">
         </div>
         <div id="otpFeedback" class="mb-2 text-center"></div>
         <div class="mb-2">
@@ -583,6 +647,64 @@ document.addEventListener("DOMContentLoaded", function () {
             showAlert("danger", "An error occurred while saving changes.");
         });
     });
+
+
+
+function loadAttendance(term_id = 0) {
+    const t_id = <?= $_SESSION['t_id'] ?? 0 ?>; // teacher session id
+
+    $.post('profile/t_analytics.php', { t_id: t_id, term_id: term_id }, function(res) {
+        // Load content into modal
+        $('#analyticsContentModal').html(res);
+
+        // Destroy previous DataTable if exists
+        if ($.fn.DataTable.isDataTable('.attendanceTable')) {
+            $('.attendanceTable').DataTable().destroy();
+        }
+
+        // Initialize DataTable and store in a variable
+        const attendanceTable = $('.attendanceTable').DataTable({
+            scrollY: '50vh',
+            scrollCollapse: true,
+            paging: true,
+            pageLength: 10,
+            lengthMenu: [5, 10, 25, 50, 100],
+            ordering: true,
+            info: false,
+            autoWidth: true,       // allow DataTables to auto-adjust column widths
+            scrollX: false,        // vertical scroll only
+            responsive: false,
+            columnDefs: [
+                { orderable: false, targets: -1 }
+            ],
+            dom: '<"row mb-2"<"col-sm-6"l><"col-sm-6"f>>tip',
+            language: { lengthMenu: "Show _MENU_ entries" }
+        });
+
+        // Adjust columns after initialization
+        attendanceTable.columns.adjust().draw(false);
+
+        // Also adjust columns when modal is fully shown (optional but safer)
+        $('#attendanceModal').on('shown.bs.modal', function() {
+            attendanceTable.columns.adjust().draw(false);
+        });
+    });
+}
+
+// Button click → show modal + load data
+$('#viewAttendanceButton').on('click', function() {
+    $('#attendanceModal').modal('show');
+    loadAttendance();
+});
+
+// Term selector change inside modal
+$(document).on('change', '#termSelectModal', function() {
+    const term_id = $(this).val();
+    loadAttendance(term_id);
+});
+
+
+    
 });
 
 </script>

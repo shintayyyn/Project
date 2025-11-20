@@ -16,10 +16,12 @@ $current_term_id = $current_term['term_id'] ?? null;
 // Fetch statistics
 // =======================
 $stats = [
-    'students' => $conn->query("
-        SELECT COUNT(*) as count 
-        FROM students s
-    ")->fetch_assoc()['count'],
+  'students' => $conn->query("
+    SELECT COUNT(DISTINCT s_id) AS count
+    FROM students_sections
+    WHERE term_id = $current_term_id
+")->fetch_assoc()['count'],
+
 
     'teachers' => $conn->query("
         SELECT COUNT(DISTINCT t.t_id) as count 
@@ -218,6 +220,8 @@ $section_stats_query = "
 ";
 $section_stats = $conn->query($section_stats_query);
 
+
+
 // =======================
 // Fetch counts by term for chart
 // =======================
@@ -390,9 +394,11 @@ margin-left:10px;
     </a>
 
     <!-- End Term Button -->
-    <button type="button" class="btn btn-primary" id="endTermBtn" data-term-id="1">
-        <i class="bi bi-calendar-x me-1"></i> End Term
-    </button>
+    <!-- End Term Button -->
+<button type="button" class="btn btn-primary" id="endTermBtn" data-term-id="<?php echo htmlspecialchars($current_term_id); ?>">
+    <i class="bi bi-calendar-x me-1"></i> End Term
+</button>
+
 </div>
 
 
@@ -793,10 +799,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 });
 
-</script>
-
-
-<script>
 document.getElementById('endTermBtn').addEventListener('click', function() {
     const termId = this.getAttribute('data-term-id');
 

@@ -21,6 +21,7 @@ class Constants
     const DOW_THURSDAY = 5;
     const DOW_FRIDAY = 6;
     const DOW_SATURDAY = 7;
+    
     const STARTWEEK_MONDAY_ISO = 21;
 
     const METHODARR = [

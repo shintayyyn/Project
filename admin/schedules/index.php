@@ -1,6 +1,78 @@
 <?php
 require_once __DIR__ . '/../../includes/db.php';
+
+// === Get active term ID dynamically ===
+$term_query = "SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1";
+$term_result = $conn->query($term_query);
+$active_term = $term_result->fetch_assoc();
+$current_term_id = $active_term['term_id'] ?? 0; // fallback if none active
+
+// === Fetch all sections with their advisors for the active term ===
+$query = "
+SELECT 
+    s.section_id,
+    s.section_code,
+    s.year_level,
+    s.degree_id,
+    d.degree_code,
+    d.degree_name,
+    sa.t_id,
+    CONCAT(sa.t_lname, ', ', sa.t_fname, ' ', COALESCE(LEFT(sa.t_mname, 1), '.')) AS advisor_name,
+    (SELECT COUNT(*) FROM students_sections ss WHERE ss.section_id = s.section_id) AS student_count,
+    s.max_students
+FROM sections s
+LEFT JOIN degrees d ON s.degree_id = d.degree_id
+LEFT JOIN sections_advisors sa 
+       ON s.section_id = sa.section_id
+      AND sa.term_id = $current_term_id
+ORDER BY d.degree_code, s.year_level, s.section_code
+";
+
+$sections_result = $conn->query($query);
+
+// === Group sections by degree ===
+$sections_by_degree = [];
+while ($section = $sections_result->fetch_assoc()) {
+    $degree_code = $section['degree_code'];
+    if (!isset($sections_by_degree[$degree_code])) {
+        $sections_by_degree[$degree_code] = [
+            'degree_name' => $section['degree_name'],
+            'sections' => []
+        ];
+    }
+    $sections_by_degree[$degree_code]['sections'][] = $section;
+}
+
+// === Fetch all rooms ===
+$rooms_query = "SELECT * FROM rooms ORDER BY room_number";
+$rooms_result = $conn->query($rooms_query);
+
+// Store rooms data for JavaScript
+$rooms_data = [];
+while ($room = $rooms_result->fetch_assoc()) {
+    $rooms_data[] = $room;
+}
+$rooms_json = json_encode($rooms_data);
+
+// === Fetch all subjects with teachers ===
+$subjects_query = "
+SELECT DISTINCT 
+    s.subject_id,
+    s.subject_code,
+    s.subject_description,
+    s.units,
+    s.degree_id,
+    t.t_id,
+    CONCAT(t.t_lname, ', ', t.t_fname, ' ', COALESCE(LEFT(t.t_mname, 1), '.')) AS teacher_name
+FROM subjects s
+LEFT JOIN teachers t ON s.subject_id = t.t_id  -- keep your table names
+ORDER BY s.subject_code
+";
+
+$subjects_result = $conn->query($subjects_query);
 ?>
+
+
 <link rel="stylesheet" href="../css/common.css">
 <style>
 /* Main content area fix */
@@ -144,6 +216,14 @@ button.btn-success {
     background-color: #EDF8FD;
 }
 
+.dataTables_wrapper{
+overflow: hidden;
+}
+
+.dataTables_scrollBody{
+overflow-x:hidden !important;
+}
+
 .header2{
    background: var(--primary); 
    color: white;
@@ -176,66 +256,6 @@ button.btn-success {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 </style>
-<?php
-// Fetch all sections with their advisors, schedules, and degrees
-$query = "SELECT DISTINCT 
-            s.section_id,
-            s.section_code,
-            s.year_level,
-            s.degree_id,
-            d.degree_code,
-            d.degree_name,
-            sa.t_id,
-            CONCAT(sa.t_lname, ', ', sa.t_fname, ' ', COALESCE(LEFT(sa.t_mname, 1), ''), '.') as advisor_name,
-            (SELECT COUNT(*) FROM students_sections ss WHERE ss.section_id = s.section_id) as student_count,
-            s.max_students
-          FROM sections s
-          LEFT JOIN sections_advisors sa ON s.section_id = sa.section_id
-          LEFT JOIN degrees d ON s.degree_id = d.degree_id
-          ORDER BY d.degree_code, s.year_level, s.section_code";
-
-$sections_result = $conn->query($query);
-
-// Group sections by degree
-$sections_by_degree = [];
-while ($section = $sections_result->fetch_assoc()) {
-    $degree_code = $section['degree_code'];
-    if (!isset($sections_by_degree[$degree_code])) {
-        $sections_by_degree[$degree_code] = [
-            'degree_name' => $section['degree_name'],
-            'sections' => []
-        ];
-    }
-    $sections_by_degree[$degree_code]['sections'][] = $section;
-}
-
-// Fetch all rooms
-$rooms_query = "SELECT * FROM rooms ORDER BY room_number";
-$rooms_result = $conn->query($rooms_query);
-
-// Store rooms data for JavaScript
-$rooms_data = [];
-while ($room = $rooms_result->fetch_assoc()) {
-    $rooms_data[] = $room;
-}
-$rooms_json = json_encode($rooms_data);
-
-$subjects_query = "SELECT DISTINCT 
-                        s.subject_id,
-                        s.subject_code,
-                        s.subject_description,
-                        s.units,
-                        s.degree_id,   -- for filtering per department
-                        t.t_id,
-                        CONCAT(t.t_lname, ', ', t.t_fname, ' ', COALESCE(LEFT(t.t_mname, 1), ''), '.') AS teacher_name
-                   FROM subjects s
-                   LEFT JOIN teachers t ON s.subject_id = t.t_id  -- join with teachers table
-                   ORDER BY s.subject_code";
-
-$subjects_result = $conn->query($subjects_query);
-
-
-?>
 
 <div class="container-fluid">
     <div>
@@ -248,39 +268,105 @@ $subjects_result = $conn->query($subjects_query);
             </nav>
     </div>
 
-    <!-- Sections with Schedules -->
-     <div class="d-flex flex-column flex-md-row gap-2 h-100">
-            <!-- Degree Filter -->
-            <div class="input-group mb-3">
-    <span class="input-group-text" style="background: var(--primary); color: var(--tertiary);">
-        <i class="fa-solid fa-filter"></i>
+<!-- Filters Row -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex align-items-center gap-2">
+  <div class="position-relative">
+    <!-- Filter icon inside select -->
+    <span 
+      style="
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--primary);
+        color: var(--tertiary);
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+        width: 38px;
+      ">
+      <i class="fa-solid fa-filter"></i>
     </span>
-    <select id="degreeFilter" class="form-select">
-        <option value="">All Degrees</option>
+
+    <select id="degreeFilter" class="form-select w-auto" 
+            style="
+              border: 1px solid #033A70; 
+              border-radius: 8px; 
+              height: 50px; 
+              padding-left: 46px; /* icon space */
+              padding-top: 0;
+              padding-bottom: 0;
+              display: inline-block;
+              vertical-align: middle;
+              -webkit-appearance: none;
+              -moz-appearance: none;
+              appearance: none;
+            ">
+      <option value="">All Degrees</option>
         <?php foreach ($sections_by_degree as $degree_code => $degree_data): ?>
             <option value="<?= htmlspecialchars($degree_code); ?>">
                 <?= htmlspecialchars($degree_code . ' - ' . $degree_data['degree_name']); ?>
             </option>
         <?php endforeach; ?>
     </select>
+  </div>
 </div>
 
-           <!-- Search Bar with Icon -->
-<div class="input-group mb-3">
-    <span class="input-group-text " id="search-icon" style="background: var(--primary); color: var(--tertiary);">
-        <i class="fa-brands fa-searchengin fa-lg"></i>
-                </span>
+
+ <div class="d-flex align-items-center gap-2">
+  <label for="searchInput" class="form-label mb-0"></label>
+  <div class="position-relative flex-grow-1">
+    <!-- Search icon inside span -->
+    <span 
+      style="
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--primary);
+        color: var(--tertiary);
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+        width: 38px;
+      ">
+      <i class="fa-brands fa-searchengin fa-lg"></i>
+    </span>
+
+    <!-- Input -->
     <input 
-        type="text" 
-        id="searchSection" 
-        class="form-control" 
-        placeholder="Search section code..."
-        aria-label="Search section"
-        aria-describedby="search-icon"
+      type="text" 
+      id="searchSection" 
+      class="form-control ps-5 pe-5" 
+      placeholder="Search..."
+      style="
+        height: 50px; 
+        border: 1px solid #033A70; 
+        border-radius: 8px; 
+        vertical-align: middle;
+      "
     >
+
+    <!-- Clear button -->
+    <button 
+      type="button" 
+      id="clearSearch" 
+      class="btn-close position-absolute end-0 top-50 translate-middle-y me-2" 
+      aria-label="Clear search" 
+      style="display:none; width: 38px; height: 38px; font-size: 0.8rem;">
+    </button>
+  </div>
 </div>
 
-        </div>
+
+</div>
+
+
 
      <div class="row g-3" id="sectionsContainer">
  <?php foreach ($sections_by_degree as $degree_code => $degree_data) { ?>
@@ -295,6 +381,8 @@ $active_term_id = $active_term['term_id'] ?? 2;
 $schedules_query = "
     SELECT 
         ss.ss_id,
+        ss.schedule_group_id,
+        ss.term_id,
         ss.subject_code,
         s.subject_description,
         s.units,
@@ -316,10 +404,11 @@ $schedules_query = "
     LEFT JOIN teachers t ON ss.teacher_id = t.t_id
     WHERE ss.section_id = " . (int)$section['section_id'] . "
     AND ss.subject_id IS NOT NULL
-    ORDER BY ss.day_of_week, ss.start_time
+    ORDER BY ss.schedule_group_id, ss.day_of_week, ss.start_time
 ";
 
 $schedules_result = $conn->query($schedules_query);
+
 
 
                 ?>
@@ -450,31 +539,33 @@ $schedules_result = $conn->query($schedules_query);
                                 ?>
                             </td>
                             <td><?php echo htmlspecialchars($schedule['room_number']); ?></td>
-                            <td>
-                                <div class="btn-group">
-                                   <button type="button" 
-                                    class="btn btn-sm btn-primary edit-schedule-btn" 
-                                    data-bs-toggle="modal" 
-                                    data-bs-target="#editScheduleModal" 
-                                    data-schedule-id="<?= $schedule['ss_id'] ?? ''; ?>"
-                                    data-section-id="<?= $section['section_id'] ?? ''; ?>"
-                                    data-subject-code="<?= htmlspecialchars($schedule['subject_code'] ?? ''); ?>"
-                                    data-teacher-id="<?= $schedule['teacher_id'] ?? ''; ?>"
-                                    data-day="<?= isset($days) && is_array($days) ? implode(',', $days) : ''; ?>"
-                                    data-start-time="<?= $schedule['start_time'] ?? ''; ?>"
-                                    data-end-time="<?= $schedule['end_time'] ?? ''; ?>"
-                                    data-room-id="<?= $schedule['room_id'] ?? ''; ?>"
-                                    data-term-id="<?= $schedule['term_id'] ?? ''; ?>">
-                                <i class="bi bi-pencil-square"></i>
-                            </button>
+                           <td>
+                <div class="btn-group">
+                    <button type="button" 
+                        class="btn btn-sm btn-primary edit-schedule-btn" 
+                        data-bs-toggle="modal" 
+                        data-bs-target="#editScheduleModal" 
+                        data-schedule-id="<?= $schedule['ss_id'] ?? ''; ?>"
+                        data-schedule-group-id="<?= $schedule['schedule_group_id'] ?? ''; ?>"
+                        data-section-id="<?= $section['section_id'] ?? ''; ?>"
+                        data-subject-code="<?= htmlspecialchars($schedule['subject_code'] ?? ''); ?>"
+                        data-teacher-id="<?= $schedule['teacher_id'] ?? ''; ?>"
+                        data-day="<?= isset($days) && is_array($days) ? implode(',', $days) : $schedule['day_of_week']; ?>"
+                        data-start-time="<?= $schedule['start_time'] ?? ''; ?>"
+                        data-end-time="<?= $schedule['end_time'] ?? ''; ?>"
+                        data-room-id="<?= $schedule['room_id'] ?? ''; ?>"
+                        data-term-id="<?= $schedule['term_id'] ?? ''; ?>">
+                        <i class="bi bi-pencil-square"></i>
+                    </button>
 
-                                    <button type="button" 
-                                            class="btn btn-sm btn-danger delete-schedule-btn" 
-                                            data-schedule-id="<?php echo $schedule['ss_id']; ?>">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </div>
-                            </td>
+        <button type="button" 
+                class="btn btn-sm btn-danger delete-schedule-btn" 
+                data-schedule-id="<?= $schedule['ss_id'] ?? ''; ?>">
+            <i class="bi bi-trash"></i>
+        </button>
+    </div>
+</td>
+
                         </tr>
                     <?php } ?>
                 </tbody>
@@ -611,9 +702,10 @@ while ($subject = $subjects_result->fetch_assoc()) {
             <div class="modal-body">
                 <form id="editScheduleForm" class="needs-validation" novalidate>
                     <input type="hidden" id="edit_schedule_id" name="schedule_id">
+                    <input type="hidden" id="edit_schedule_group_id" name="schedule_group_id">
                     <input type="hidden" id="edit_section_id" name="section_id">
-                    <input type="hidden" id="edit_term_id" name="term_id" value="">
-                    
+                    <input type="hidden" id="edit_term_id" name="term_id">
+
                     <div class="mb-3">
                         <label for="edit_subject_code" class="form-label">Subject</label>
                         <select class="form-select" id="edit_subject_code" name="subject_code" required>
@@ -622,7 +714,7 @@ while ($subject = $subjects_result->fetch_assoc()) {
                             $subjects_result->data_seek(0);
                             while ($subject = $subjects_result->fetch_assoc()) {
                                 echo '<option value="' . htmlspecialchars($subject['subject_code']) . '">' . 
-                                     htmlspecialchars($schedule['subject_code'] . ' - ' . $schedule['subject_description']) . 
+                                     htmlspecialchars($subject['subject_code'] . ' - ' . $subject['subject_description']) . 
                                      '</option>';
                             }
                             ?>
@@ -639,27 +731,15 @@ while ($subject = $subjects_result->fetch_assoc()) {
 
                     <div class="mb-3">
                         <label class="form-label">Day(s) of the Week</label>
-                        <div id="edit_day_of_week" class="btn-group gap-2" role="group" aria-label="Select days">
-                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="edit_dayMon" value="Monday" autocomplete="off">
-                            <label class="btn btn-outline-primary rounded-pill" for="edit_dayMon">Mon</label>
-
-                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="edit_dayTue" value="Tuesday" autocomplete="off">
-                            <label class="btn btn-outline-primary rounded-pill" for="edit_dayTue">Tue</label>
-
-                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="edit_dayWed" value="Wednesday" autocomplete="off">
-                            <label class="btn btn-outline-primary rounded-pill" for="edit_dayWed">Wed</label>
-
-                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="edit_dayThu" value="Thursday" autocomplete="off">
-                            <label class="btn btn-outline-primary rounded-pill" for="edit_dayThu">Thu</label>
-
-                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="edit_dayFri" value="Friday" autocomplete="off">
-                            <label class="btn btn-outline-primary rounded-pill" for="edit_dayFri">Fri</label>
-
-                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="edit_daySat" value="Saturday" autocomplete="off">
-                            <label class="btn btn-outline-primary rounded-pill" for="edit_daySat">Sat</label>
-
-                            <input type="checkbox" class="btn-check" name="day_of_week[]" id="edit_daySun" value="Sunday" autocomplete="off">
-                            <label class="btn btn-outline-primary rounded-pill" for="edit_daySun">Sun</label>
+                        <div id="edit_day_of_week" class="btn-group gap-2" role="group">
+                            <?php
+                            $days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+                            foreach ($days as $d) {
+                                $short = substr($d,0,3);
+                                echo '<input type="checkbox" class="btn-check" name="day_of_week[]" id="edit_day'.$short.'" value="'.$d.'" autocomplete="off">';
+                                echo '<label class="btn btn-outline-primary rounded-pill" for="edit_day'.$short.'">'.$short.'</label>';
+                            }
+                            ?>
                         </div>
                         <div class="invalid-feedback d-block">Please select at least one day.</div>
                     </div>
@@ -701,6 +781,7 @@ while ($subject = $subjects_result->fetch_assoc()) {
         </div>
     </div>
 </div>
+
 
 
 <!-- SweetAlert2 CSS -->
@@ -745,21 +826,24 @@ while ($subject = $subjects_result->fetch_assoc()) {
     });
 });
 
- // --------------------- Filter Sections ---------------------
-    const degreeFilter = document.getElementById('degreeFilter');
-    const searchSection = document.getElementById('searchSection');
+// --------------------- Filter Sections ---------------------
+const degreeFilter = document.getElementById('degreeFilter');
+const searchSection = document.getElementById('searchSection');
+const clearBtn = document.getElementById('clearSearch');
+const sectionsContainer = document.getElementById('sectionsContainer');
+const noSectionsAlertId = 'noSectionsAlert';
 
-    function filterSections() {
+function filterSections() {
     const degree = degreeFilter.value.toLowerCase();
     const search = searchSection.value.toLowerCase();
-    let visibleCount = 0; // count visible cards
+    let visibleCount = 0;
 
     document.querySelectorAll('.section-card').forEach(card => {
-        const cardDegree = card.getAttribute('data-degree').toLowerCase();
-        const sectionCode = card.getAttribute('data-section').toLowerCase();
+        const cardDegree = (card.dataset.degree || '').toLowerCase();
+        const cardText = card.textContent.toLowerCase(); // ✅ allow any search input
 
         const matchesDegree = !degree || cardDegree === degree;
-        const matchesSearch = !search || sectionCode.includes(search);
+        const matchesSearch = !search || cardText.includes(search);
 
         const isVisible = matchesDegree && matchesSearch;
         card.style.display = isVisible ? '' : 'none';
@@ -767,27 +851,51 @@ while ($subject = $subjects_result->fetch_assoc()) {
         if (isVisible) visibleCount++;
     });
 
-    // Show alert if no cards are visible
-    const alertBox = document.getElementById('noSectionsAlert');
+    // Show/hide "No sections found" alert
+    let alertBox = document.getElementById(noSectionsAlertId);
     if (!alertBox) {
-        // Create alert dynamically if not exist
-        const container = document.getElementById('sectionsContainer') || document.body;
-        const div = document.createElement('div');
-        div.id = 'noSectionsAlert';
-        div.className = 'alert alert-info mt-3';
-        div.textContent = 'No sections found for the selected filter.';
-        div.style.display = visibleCount === 0 ? '' : 'none';
-        container.prepend(div);
-    } else {
-        alertBox.style.display = visibleCount === 0 ? '' : 'none';
+        alertBox = document.createElement('div');
+        alertBox.id = noSectionsAlertId;
+        alertBox.className = 'alert alert-info mt-3';
+        alertBox.textContent = 'No sections found for the selected filter.';
+        sectionsContainer.prepend(alertBox);
     }
+    alertBox.style.display = visibleCount === 0 ? '' : 'none';
+
+   // --- Counter Badge (always above alert) ---
+let countBadge = document.getElementById('visibleCountBadge');
+if (!countBadge) {
+    countBadge = document.createElement('div');
+    countBadge.id = 'visibleCountBadge';
+    countBadge.className = 'badge bg-primary mb-2 p-2 fs-6';
+    sectionsContainer.parentNode.insertBefore(countBadge, sectionsContainer);
+}
+countBadge.textContent = `Showing ${visibleCount} ${visibleCount === 1 ? 'Section' : 'Sections'}`;
 }
 
+// 🔹 Event listeners
+degreeFilter?.addEventListener('change', filterSections);
+searchSection?.addEventListener('input', filterSections);
 
-    degreeFilter?.addEventListener('change', filterSections);
-    searchSection?.addEventListener('input', filterSections);
+// 🔹 Clear button logic
+if (clearBtn) {
+    searchSection.addEventListener('input', () => {
+        clearBtn.style.display = searchSection.value ? 'inline-block' : 'none';
+    });
 
+    clearBtn.addEventListener('click', () => {
+        searchSection.value = '';
+        clearBtn.style.display = 'none';
+        searchSection.focus();
+        filterSections();
+    });
 
+    clearBtn.addEventListener('mouseover', () => (clearBtn.style.opacity = '1'));
+    clearBtn.addEventListener('mouseout', () => (clearBtn.style.opacity = '0.8'));
+}
+
+// Initial filter call
+filterSections();
 
 document.addEventListener('DOMContentLoaded', function() {
     // Bootstrap form validation
@@ -937,10 +1045,12 @@ if (addScheduleForm) {
 }
 
   
-  const editScheduleModal = document.getElementById('editScheduleModal');
+const editScheduleModal = document.getElementById('editScheduleModal');
 if (editScheduleModal) {
     editScheduleModal.addEventListener('show.bs.modal', async function(event) {
         const button = event.relatedTarget;
+
+        // Fetch data attributes
         const scheduleId = button.getAttribute('data-schedule-id');
         const sectionId = button.getAttribute('data-section-id');
         const subjectCode = button.getAttribute('data-subject-code');
@@ -949,40 +1059,31 @@ if (editScheduleModal) {
         const startTime = button.getAttribute('data-start-time');
         const endTime = button.getAttribute('data-end-time');
         const roomId = button.getAttribute('data-room-id');
-        const termId = button.getAttribute('data-term-id'); // NEW
+        const termId = button.getAttribute('data-term-id'); 
+        const scheduleGroupId = button.getAttribute('data-schedule-group-id');
 
-        // Reset form validation
         const form = editScheduleModal.querySelector('form');
         form.classList.remove('was-validated');
 
-        // Set schedule ID, section ID, term ID
+        // Set form values
         document.getElementById('edit_schedule_id').value = scheduleId;
         document.getElementById('edit_section_id').value = sectionId;
-        document.getElementById('edit_term_id').value = termId; // NEW
+        document.getElementById('edit_term_id').value = termId;
+        document.getElementById('edit_schedule_group_id').value = scheduleGroupId;
 
-        // Set subject code
-        const editSubjectCode = document.getElementById('edit_subject_code');
-        editSubjectCode.value = subjectCode;
+        document.getElementById('edit_subject_code').value = subjectCode;
 
-        // Load teachers for the subject
         await loadTeachersForSubject(subjectCode, 'edit_teacher_id');
-
-        // Set selected teacher
         const teacherSelect = document.getElementById('edit_teacher_id');
         teacherSelect.value = teacherId && teacherId !== 'null' ? teacherId : '';
 
-        // Pre-check the day checkboxes
+        // Pre-check day checkboxes
         const daysArray = day.split(',').map(d => d.trim());
         const dayCheckboxes = editScheduleModal.querySelectorAll('input[name="day_of_week[]"]');
-        dayCheckboxes.forEach(cb => {
-            cb.checked = daysArray.includes(cb.value);
-        });
+        dayCheckboxes.forEach(cb => cb.checked = daysArray.includes(cb.value));
 
-        // Set times
         document.getElementById('edit_start_time').value = startTime;
         document.getElementById('edit_end_time').value = endTime;
-
-        // Set room
         document.getElementById('edit_room_id').value = roomId;
     });
 
@@ -990,7 +1091,6 @@ if (editScheduleModal) {
     const editForm = editScheduleModal.querySelector('form');
     editForm.addEventListener('submit', async function(event) {
         event.preventDefault();
-
         if (!this.checkValidity()) {
             event.stopPropagation();
             this.classList.add('was-validated');
@@ -1000,12 +1100,6 @@ if (editScheduleModal) {
         const formData = new FormData(this);
         formData.append('action', 'update_schedule');
 
-        // Debug log
-        console.log('Submitting form with data:');
-        for (let [key, value] of formData.entries()) {
-            console.log(`${key}: ${value}`);
-        }
-
         try {
             const response = await fetch('/admin/ajax/schedules_ajax.php', {
                 method: 'POST',
@@ -1013,27 +1107,26 @@ if (editScheduleModal) {
             });
 
             const data = await response.json();
-            console.log('Server response:', data);
 
             if (data.success) {
                 showAlert('success', data.message);
-                const modal = bootstrap.Modal.getInstance(editScheduleModal);
-                modal.hide();
-                location.reload();
+                bootstrap.Modal.getInstance(editScheduleModal).hide();
+                setTimeout(() => window.location.reload(), 1000);
             } else {
                 showAlert('danger', data.error || 'Failed to update schedule');
             }
         } catch (error) {
             console.error('Error:', error);
-            showAlert('danger', 'An error occurred while updating the schedule');
+            showAlert('danger', 'An unexpected error occurred.');
         }
+    });
+
+    // Reload teachers when changing subject
+    document.getElementById('edit_subject_code').addEventListener('change', function() {
+        loadTeachersForSubject(this.value, 'edit_teacher_id');
     });
 }
 
-// Handle subject selection change for Edit Schedule
-document.getElementById('edit_subject_code').addEventListener('change', function() {
-    loadTeachersForSubject(this.value, 'edit_teacher_id');
-});
 
 // Function to update schedule displays when teachers change
 function updateScheduleTeachers(subjectCode, teacherName) {

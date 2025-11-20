@@ -18,6 +18,12 @@ try {
         throw new Exception('Invalid request method');
     }
 
+    // --- Get current active term ---
+$term_row = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1")->fetch_assoc();
+$term_id = $term_row['term_id'] ?? null;
+if (!$term_id) throw new Exception('No active term found.');
+
+
     // --- Validation ---
     if (empty($_POST['s_id'])) throw new Exception('Student ID is required');
 
@@ -58,8 +64,8 @@ try {
         's_address'  => $_POST['s_address'] ?? '',
         's_email'    => $email,
         's_status'   => $_POST['s_status'],
-        'year_level' => $_POST['year_level'] ?? null,
-        'is_regular' => isset($_POST['is_regular']) && $_POST['is_regular'] ? 1 : 0,
+        'year_level' => isset($_POST['year_level']) ? (int)$_POST['year_level'] : $currentData['year_level'],
+        'is_regular' => isset($_POST['is_regular']) ? (int)$_POST['is_regular'] : $currentData['is_regular'],
         'degree_id'  => $_POST['degree_id']
     ];
 
@@ -108,41 +114,41 @@ try {
     $stmt2->execute();
     $stmt2->close();
 
-    // --- Update degree record if changed ---
-    if ($newData['degree_id'] != $currentData['degree_id']) {
-        // Fetch active degree
-        $stmt_deg_check = $conn->prepare("
-            SELECT sd_id FROM students_degrees 
-            WHERE s_id = ? AND status = 'Active' 
-            ORDER BY enrollment_date DESC LIMIT 1
-        ");
-        $stmt_deg_check->bind_param("i", $id);
-        $stmt_deg_check->execute();
-        $res_deg = $stmt_deg_check->get_result();
-        $existingDeg = $res_deg->fetch_assoc();
-        $stmt_deg_check->close();
+  if ($newData['degree_id'] != $currentData['degree_id']) {
+    // Fetch active degree for current term
+    $stmt_deg_check = $conn->prepare("
+        SELECT sd_id FROM students_degrees 
+        WHERE s_id = ? AND status = 'Active' AND term_id = ?
+        ORDER BY enrollment_date DESC LIMIT 1
+    ");
+    $stmt_deg_check->bind_param("ii", $id, $term_id);
+    $stmt_deg_check->execute();
+    $res_deg = $stmt_deg_check->get_result();
+    $existingDeg = $res_deg->fetch_assoc();
+    $stmt_deg_check->close();
 
-        if ($existingDeg) {
-            // Update existing active degree
-            $stmt_update_deg = $conn->prepare("
-                UPDATE students_degrees 
-                SET degree_id = ?, degree_code = ?
-                WHERE sd_id = ?
-            ");
-            $stmt_update_deg->bind_param("isi", $newData['degree_id'], $degree_code, $existingDeg['sd_id']);
-            $stmt_update_deg->execute();
-            $stmt_update_deg->close();
-        } else {
-            // Insert new degree
-            $stmt_insert_deg = $conn->prepare("
-                INSERT INTO students_degrees (s_id, degree_id, degree_code, status) 
-                VALUES (?, ?, ?, 'Active')
-            ");
-            $stmt_insert_deg->bind_param("iis", $id, $newData['degree_id'], $degree_code);
-            $stmt_insert_deg->execute();
-            $stmt_insert_deg->close();
-        }
+    if ($existingDeg) {
+        // Update existing active degree
+        $stmt_update_deg = $conn->prepare("
+            UPDATE students_degrees 
+            SET degree_id = ?, degree_code = ?
+            WHERE sd_id = ?
+        ");
+        $stmt_update_deg->bind_param("isi", $newData['degree_id'], $degree_code, $existingDeg['sd_id']);
+        $stmt_update_deg->execute();
+        $stmt_update_deg->close();
+    } else {
+        // Insert new degree for this term
+        $stmt_insert_deg = $conn->prepare("
+            INSERT INTO students_degrees (s_id, degree_id, degree_code, status, term_id) 
+            VALUES (?, ?, ?, 'Active', ?)
+        ");
+        $stmt_insert_deg->bind_param("iisi", $id, $newData['degree_id'], $degree_code, $term_id);
+        $stmt_insert_deg->execute();
+        $stmt_insert_deg->close();
     }
+}
+
 
     $conn->commit();
 
@@ -160,7 +166,7 @@ try {
         LEFT JOIN (
             SELECT * FROM students_degrees sd1 WHERE status = 'Active'
         ) sd ON s.s_id = sd.s_id
-        LEFT JOIN students_sections ss ON s.s_id = ss.s_id
+      LEFT JOIN students_sections ss ON s.s_id = ss.s_id AND ss.term_id = $term_id
         LEFT JOIN sections sec ON ss.section_id = sec.section_id
         LEFT JOIN parent_student ps ON s.s_id = ps.s_id
         LEFT JOIN parents p ON ps.p_id = p.p_id

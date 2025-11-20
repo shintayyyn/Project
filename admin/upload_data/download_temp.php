@@ -18,31 +18,31 @@ $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();
 $sheet->setTitle('Upload Template');
 
-// Define columns including the new ones
+// Define columns (removed p_age)
 $columns = [
     'student_first_name',
     'student_last_name',
     'student_middle_name',
     'student_suffix',
     'student_gender',
-    'student_birthdate (YYYY-MM-DD)',
+    'student_birthdate',
     'student_contact_number',
     'student_email',
-    'student_password',
-    'student_status',
+    'student_address',
     'student_degree',
-    'is_regular',      // new column
-    'is_solo',         // new column
-    'year_level',      // new column
+    'is_regular',                         // 1 = Regular, 2 = Irregular
+    'is_solo',                            // 1 = With Parent, 2 = Solo
+    'year_level',
     'p_fname',
     'p_lname',
     'p_mname',
     'p_suffix',
     'p_gender',
-    'p_bdate (YYYY-MM-DD)',
-    'p_age',
+    'p_bdate',
     'p_email',
-    'p_cnum'
+    'p_cnum',
+    'same_address_flag',
+    'parent_address'
 ];
 
 // Add headers to the first row
@@ -66,3 +66,4 @@ header('Cache-Control: max-age=0');
 $writer = new Xlsx($spreadsheet);
 $writer->save('php://output');
 exit;
+?>

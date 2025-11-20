@@ -9,14 +9,7 @@
     --card-border-radius: 0.75rem;
     --transition-speed: 0.3s;
 }
-/* Hide scrollbars by default (desktop) */
-* {
-    scrollbar-width: none !important;  /* Firefox */
-}
 
-*::-webkit-scrollbar {
-    display: none !important;  /* Chrome, Safari, Edge */
-}
 
 
 body{
@@ -144,37 +137,7 @@ box-shadow:  5px 5px 10px #d5d5d5,
     }
 }
 
-/* Custom scrollbar for child dropdown */
-.custom-scrollbar {
-    max-height: 220px;
-    overflow-y: auto;
-    width:100%;
-}
 
-/* Chrome, Edge, Safari */
-.custom-scrollbar::-webkit-scrollbar {
-    width: 8px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-    background: var(--primary); /* light background */
-    border-radius: 4px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-    background: linear-gradient(145deg, var(--primary) 0%, var(--secondary) 100%);
-    border-radius: 4px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(145deg, var(--secondary) 0%, var(--primary) 100%);
-}
-
-/* Firefox */
-.custom-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: var(--primary) #f1f1f1ff;
-}
 
 
 /* Card styling */

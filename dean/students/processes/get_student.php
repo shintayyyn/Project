@@ -18,31 +18,31 @@ try {
 
     $student_id = $_GET['id'];
 
-    $sql = "SELECT 
-                s.s_id, s.s_fname, s.s_lname, s.s_mname, s.s_suffix, s.s_gender, 
-                s.s_bdate, s.s_cnum, s.s_email, s.s_status, 
+    $sql = "
+        SELECT 
+            s.*,
+            sd.degree_id,
+            sd.degree_code,
+            ss.section_id,
+            sec.section_code,
+            CONCAT(
+                p.p_fname, ' ',
+                COALESCE(CONCAT(p.p_mname, ' '), ''),
+                p.p_lname,
+                COALESCE(CONCAT(' ', p.p_suffix), '')
+            ) AS parent_fullname
+        FROM students s
+        LEFT JOIN (
+    SELECT * FROM students_degrees WHERE s_status = 'active'
+) sd ON s.s_id = sd.s_id
 
-                d.degree_id, d.degree_code,
-
-                p.p_id as parent_id, 
-                p.p_fname as parent_fname, 
-                p.p_lname as parent_lname, 
-                p.p_mname as parent_mname, 
-                p.p_suffix as parent_suffix,
-                p.p_gender as parent_gender,
-                p.p_bdate as parent_bdate,
-                p.p_cnum as parent_cnum,
-                p.p_email as parent_email,
-                p.p_status as parent_status,
-                p.p_password_plain as parent_password_plain
-
-            FROM students s
-            LEFT JOIN students_degrees sd ON s.s_id = sd.s_id
-            LEFT JOIN degrees d ON sd.degree_id = d.degree_id
-            LEFT JOIN parent_student ps ON s.s_id = ps.s_id
-            LEFT JOIN parents p ON ps.p_id = p.p_id
-            WHERE s.s_id = ?
-            LIMIT 1";
+        LEFT JOIN students_sections ss ON s.s_id = ss.s_id
+        LEFT JOIN sections sec ON ss.section_id = sec.section_id
+        LEFT JOIN parent_student ps ON s.s_id = ps.s_id
+        LEFT JOIN parents p ON ps.p_id = p.p_id
+        WHERE s.s_id = ?
+        LIMIT 1
+    ";
 
     $stmt = $conn->prepare($sql);
     $stmt->bind_param('i', $student_id);
@@ -50,13 +50,21 @@ try {
     if ($stmt->execute()) {
         $result = $stmt->get_result();
         if ($result->num_rows > 0) {
+            $student = $result->fetch_assoc();
+
+            // Ensure age is always an integer
+            $student['s_age'] = !empty($student['s_bdate']) ? (int)date_diff(date_create($student['s_bdate']), date_create('today'))->y : 0;
+
+            // Ensure parent_fullname exists
+            $student['parent_fullname'] = !empty($student['parent_fullname']) ? $student['parent_fullname'] : 'No record';
+
             $response['status'] = 'success';
-            $response['data'] = $result->fetch_assoc();
+            $response['data'] = $student;
         } else {
             $response['message'] = 'Student not found';
         }
     } else {
-        $response['message'] = 'Failed to execute query';
+        $response['message'] = 'Failed to fetch student data';
     }
 
     $stmt->close();
@@ -67,4 +75,3 @@ try {
 }
 
 echo json_encode($response);
-?>

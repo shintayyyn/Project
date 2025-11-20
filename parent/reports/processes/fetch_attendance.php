@@ -1,97 +1,60 @@
 <?php
+
 require_once __DIR__ . '/../../../includes/db.php';
+session_start();
+$parent_id = $_SESSION['user_id'];
 
-if (session_status() === PHP_SESSION_NONE) session_start();
-if (!isset($_SESSION['parent_id'])) exit();
+$student_id = $_GET['child'] ?? '';
+$selected_month = $_GET['month'] ?? '';
+$selected_term_id = $_GET['term_id'] ?? '';
 
-$parent_id = $_SESSION['parent_id'];
+// Attendance query
+$query = "SELECT a.s_id, s.idcode, s.s_fname, a.subject_code, a.section_code,
+                 a.time_in, a.time_out, a.status,
+                 CONCAT('A.Y. ', y.year_start, '-', y.year_end, ' | ', t.semester) AS term_name
+          FROM attendance a
+          INNER JOIN students s ON a.s_id = s.s_id
+          LEFT JOIN academic_terms t ON a.term_id = t.term_id
+          LEFT JOIN academic_years y ON t.ay_id = y.ay_id
+          WHERE a.s_id = ?";
+$params = [$student_id];
+$types = "i";
 
-$month = $_GET['month'] ?? date('Y-m');
-$semester = isset($_GET['semester']) ? (int)$_GET['semester'] : 0;
+if(!empty($selected_month)){
+    // $selected_month is "YYYY-MM"
+    $parts = explode('-', $selected_month);
+    $year = intval($parts[0]);
+    $month = intval($parts[1]);
 
-$startDate = $month . '-01';
-$endDate   = date('Y-m-t', strtotime($startDate));
+    $query .= " AND MONTH(a.time_in) = ? AND YEAR(a.time_in) = ?";
+    $params[] = $month;
+    $params[] = $year;
+    $types .= "ii";
+}
 
-// Fetch children
-$stmt = $conn->prepare("
-    SELECT s.s_id, CONCAT(s.s_fname,' ',IFNULL(s.s_mname,''),' ',s.s_lname,' ',IFNULL(s.s_suffix,'')) AS student_name
-    FROM parent_student ps
-    INNER JOIN students s ON ps.s_id = s.s_id
-    WHERE ps.p_id = ?
-    ORDER BY s.s_lname, s.s_fname
-");
-$stmt->bind_param("i", $parent_id);
+
+if(!empty($selected_term_id)){
+    $query .= " AND t.term_id = ?";
+    $params[] = intval($selected_term_id);
+    $types .= "i";
+}
+
+$query .= " ORDER BY a.time_in DESC";
+$stmt = $conn->prepare($query);
+$stmt->bind_param($types, ...$params);
 $stmt->execute();
-$students = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
+$result = $stmt->get_result();
 
-// Fetch attendance
-$attendance = [];
-foreach ($students as $stu) {
-    $s_id = $stu['s_id'];
-
-    $stmt = $conn->prepare("
-        SELECT ss.section_id, ss.subject_code, ss.day_of_week, ss.start_time, ss.end_time, sec.section_code
-        FROM students_sections stus
-        INNER JOIN sections_schedules ss ON stus.section_id = ss.section_id
-        INNER JOIN sections sec ON sec.section_id = stus.section_id
-        WHERE stus.s_id = ?" . ($semester>0?" AND ss.semester=?":"")
-    );
-
-    if($semester>0) $stmt->bind_param("ii",$s_id,$semester);
-    else $stmt->bind_param("i",$s_id);
-
-    $stmt->execute();
-    $subjects = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-
-    foreach ($subjects as $subj) {
-        $present = $late = $absent = 0;
-
-        $stmt = $conn->prepare("
-            SELECT status
-            FROM attendance
-            WHERE s_id=? AND subject_code=? AND DATE(time_in) BETWEEN ? AND ?
-        ");
-        $stmt->bind_param("isss",$s_id,$subj['subject_code'],$startDate,$endDate);
-        $stmt->execute();
-        $records = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-
-        foreach($records as $r){
-            $status = strtoupper($r['status']);
-            if($status==='PRESENT') $present++;
-            elseif($status==='LATE') $late++;
-            elseif($status==='ABSENT') $absent++;
-        }
-
-        $attendance[$s_id][$subj['subject_code']] = [
-            'section' => $subj['section_code'],
-            'days' => $subj['day_of_week']." (".date("g:i A",strtotime($subj['start_time']))." - ".date("g:i A",strtotime($subj['end_time'])).")",
-            'present'=>$present,
-            'late'=>$late,
-            'absent'=>$absent
-        ];
-    }
+$data = [];
+while($row = $result->fetch_assoc()){
+    $data[] = [
+        'idcode' => $row['idcode'],
+        'subject_code' => $row['subject_code'],
+        'section_code' => $row['section_code'],
+        'date' => date('M d, Y', strtotime($row['time_in'])),
+        'time' => date('h:i A', strtotime($row['time_in'])) . ' - ' . ($row['time_out'] ? date('h:i A', strtotime($row['time_out'])) : '-'),
+        'term_name' => $row['term_name'],
+        'status' => ucfirst($row['status'])
+    ];
 }
-
-// Generate tbody HTML
-$i = 1;
-foreach($students as $stu){
-    $s_id = $stu['s_id'];
-    $student_name = $stu['student_name'];
-    if(isset($attendance[$s_id])){
-        foreach($attendance[$s_id] as $subject_code => $att){
-            echo '<tr>
-                <td></td>
-                <td>'.htmlspecialchars($s_id).'</td>
-                <td>'.htmlspecialchars($student_name).'</td>
-                <td>'.htmlspecialchars($subject_code).'</td>
-                <td>'.htmlspecialchars($att['days']).'</td>
-                <td>'.$att['present'].'</td>
-                <td>'.$att['late'].'</td>
-                <td>'.$att['absent'].'</td>
-            </tr>';
-        }
-    }
-}
+echo json_encode($data);

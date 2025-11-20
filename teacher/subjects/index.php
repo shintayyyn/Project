@@ -39,7 +39,7 @@ SELECT
     ss.teacher_name,
     r.room_number,
 
-    -- Regular students
+    -- ✅ Regular students (based on section_id and term)
     (
         SELECT COUNT(*) 
         FROM students_sections ss2
@@ -49,18 +49,17 @@ SELECT
           AND st2.is_regular = 1
     ) AS regular_count,
 
-    -- Irregular students
+    -- ✅ Irregular students (filtered by section_code + subject)
     (
-    SELECT COUNT(DISTINCT se.s_id)
-    FROM subject_enrollments se
-    INNER JOIN students st3 ON se.s_id = st3.s_id
-    WHERE se.subject_id = s.subject_id
-      AND se.term_id = ?
-      AND se.enrollment_status = 'Enrolled'
-      AND st3.is_regular = 2
-      AND (se.section_code = sec.section_code OR se.section_code IS NULL)
-) AS irregular_count
-
+        SELECT COUNT(DISTINCT se.s_id)
+        FROM subject_enrollments se
+        INNER JOIN students st3 ON se.s_id = st3.s_id
+        WHERE se.subject_id = s.subject_id
+          AND se.term_id = ?
+          AND se.section_code = sec.section_code    -- ✅ Ensure alignment with current section
+          AND se.enrollment_status = 'Enrolled'
+          AND st3.is_regular = 2
+    ) AS irregular_count
 
 FROM sections_schedules ss
 INNER JOIN subjects s ON s.subject_id = ss.subject_id
@@ -71,6 +70,7 @@ WHERE ss.teacher_id = ?
   AND ss.term_id = ?
 ORDER BY s.subject_code, sec.section_code, ss.day_of_week, ss.start_time;
 ";
+
 
 
 $stmt = $conn->prepare($subjects_query);
@@ -153,7 +153,6 @@ unset($subject);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
-    <link rel="stylesheet" href="../assets/css/attendance.css">
 </head>
 <body>
     <style>
@@ -264,12 +263,25 @@ unset($subject);
 .schedule-item i {
     color: var(--primary);
 }
-
-/* Prevent horizontal scroll */
-html, body {
-    max-width: 100%;
-    overflow-x: hidden;
+/* Hide vertical scrollbar everywhere but keep scroll functionality */
+html, body,.modal {
+    overflow-y: auto;  /* allow vertical scroll */
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;     /* Firefox */
 }
+
+/* Webkit browsers: Chrome, Safari, Edge */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;  /* optional: hide background */
+}
+
+/* Optional: keep horizontal scroll if needed */
+html, body {
+    overflow-x: hidden;  /* hide horizontal scroll */
+}
+
 
 /* Main content area */
 main {
@@ -277,7 +289,23 @@ main {
     width: calc(100% - 260px);
     padding: 0;
     overflow-x: hidden;
+     position: relative; /* ensures z-index stacking context */
+    z-index: 1;   
 }
+/* Ensure modal is on top */
+.modal {
+    z-index: 2000;
+}
+
+/* Optional: prevent body shifting when modal opens */
+body.modal-open {
+    overflow-x: hidden; 
+     /* keeps horizontal scroll disabled */
+    padding-right: 0 !important; /* prevent Bootstrap from adding extra space */
+}
+
+
+
 
 /* Container adjustments */
 .container-fluid {
@@ -295,87 +323,185 @@ h2.mb-4 {
 .card-body {
     padding: 1.5rem;
 }
+.btn.btn-primary:hover i {
+  color: white !important;
+}
+span.input-group-text{
+    background: var(--primary);
+}.clear-3d {
+    color: #012f58ff; /* base color */
+    text-shadow: 
+        1px 1px 0 #081b7933,
+        2px 2px 2px #081b7933,
+        3px 3px 3px #081b7933;
+    transition: transform 0.2s, color 0.2s;
+}
+
+.clear-3d:hover {
+    color: #dc3545;                 /* change color on hover */
+    transform: translateY(-2px) scale(1.2); /* lift and scale for 3D effect */
+    text-shadow: 
+        2px 2px 1px #00000044,
+        3px 3px 2px #00000033,
+        4px 4px 3px #00000022;      /* stronger shadows for depth on hover */
+}
+
+
 </style>
 <link rel="stylesheet" href="assets/css/content.css">
 <main>
-    <h2 class="mb-2 fw-bold">My Subjects</h2>
-     <nav aria-label="breadcrumb">
-                <ol class="breadcrumb ">
-                    <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                    <li class="breadcrumb-item active">Subjects</li>
-                </ol>
-            </nav>
-    <div class="container-fluid">
+    <div class="container-fluid" id="subjectsContainer">
+        <div class="row align-items-center mb-3 g-2 flex-wrap">
+    <div class="col-md-8 col-12">
+        <h2 class="mb-1 fw-bold">My Subjects</h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+                <li class="breadcrumb-item active">Subjects</li>
+            </ol>
+        </nav>
+    </div>
+
+   <div class="col-md-4 col-12 d-flex justify-content-end mt-2 mt-md-0 text-end">
+    <!-- Search widget -->
+    <div class="input">
+        <div class="input-group">
+            <span class="input-group-text text-warning">
+                <i class="bi bi-search"></i>
+            </span>
+            <div class="position-relative">
+        <!-- Input field with padding for icons -->
+        <input type="text" id="subjectSearch" class="form-control  pe-5" placeholder="Search...">
+        <!-- Clear "x" button on the right inside input -->
+       <span id="clearSearch" class="position-absolute top-50 end-0 translate-middle-y pe-3" style="cursor: pointer;">
+    <i class="bi bi-x text-secondary clear-3d"></i>
+</span>
+
+    </div>
+        </div>
+    </div>
+</div>
+</div>
+
         <div class="row">
-            <?php foreach ($subjects as $subject): ?>
-            <div class="col-md-6 mb-4">
-                <div class="card subject-card">
-                    <div class="card-header">
-                        <div class="subject-header">
+           <?php foreach ($subjects as $subject): ?>
+    <div class="col-md-6 mb-4 subject-card-wrapper">
+        <div class="card subject-card">
+            <div class="card-header">
+                <div class="subject-header">
                             <h5 class="mb-0 fw-bold">
-                                <?php echo htmlspecialchars($subject['code']); ?>
+                                <?= htmlspecialchars($subject['code']); ?>
                                 <small class="d-block text-white-50">
-                                    <?php echo htmlspecialchars($subject['description']); ?>
+                                    <?= htmlspecialchars($subject['description']); ?>
                                 </small>
                             </h5>
                             <span class="badge bg-white text-primary">
-                                <?php echo $subject['units']; ?> units
+                                <?= $subject['units']; ?> units
                             </span>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="subject-stats">
-                            <div class="stat-item">
-                                <div class="stat-value"><?php echo count($subject['sections']); ?></div>
-                                <div class="stat-label">Sections</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-value"><?php echo $subject['total_students']; ?></div>
-                                <div class="stat-label">Students</div>
-                            </div>
-                        </div>
-
-                        <div class="section-list">
-                            <?php foreach ($subject['sections'] as $section): ?>
-                            <div class="section-item">
-  <div class="section-header">
-    <h6 class="mb-0"><?= $section['section_code'] ?>
-        <small class="text-muted d-block"><?= $section['degree_name'] ?></small>
-    </h6>
-    <span class="badge bg-primary">
-        <?= $section['student_count'] ?> students
-    </span>
-    <span class="badge bg-success ms-1">
-        <?= $section['regular_count'] ?> Regular
-    </span>
-    <span class="badge bg-warning text-dark ms-1">
-        <?= $section['irregular_count'] ?> Irregular
-    </span>
-</div>
-
-    <ul class="schedule-list">
-        <?php foreach ($section['schedules'] as $schedule): ?>
-        <li class="schedule-item">
-            <i class="bi bi-clock"></i>
-            <?= $schedule['day'] ?> 
-            <?= date('h:i A', strtotime($schedule['start_time'])) . ' - ' . date('h:i A', strtotime($schedule['end_time'])) ?>
-            <i class="bi bi-building ms-2"></i> <?= $schedule['room'] ?>
-        </li>
-        <?php endforeach; ?>
-    </ul>
-
-            <a href="subjects/log_attendance.php?subject_code=<?= urlencode($subject['code']) ?>&section_id=<?= $section['section_id'] ?>" 
-            class="btn btn-sm btn-primary mt-2">
-                <i class="bi bi-qr-code-scan me-1"></i>Log Attendance
-            </a>
-        </div>
-
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
+                    <!-- Removed Show button from here -->
                 </div>
             </div>
-            <?php endforeach; ?>
+
+            <div class="card-body">
+                <div class="subject-stats">
+                    <div class="stat-item">
+                        <div class="stat-value"><?= count($subject['sections']); ?></div>
+                        <div class="stat-label">Sections</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value"><?= $subject['total_students']; ?></div>
+                        <div class="stat-label">Students</div>
+                    </div>
+                </div>
+
+                <div class="section-list">
+                    <?php foreach ($subject['sections'] as $section): ?>
+                        <div class="section-item">
+                            <div class="section-header d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-0">
+                                        <?= htmlspecialchars($section['section_code']); ?>
+                                        <small class="text-muted d-block">
+                                            <?= htmlspecialchars($section['degree_name']); ?>
+                                        </small>
+                                    </h6>
+                                </div>
+
+                                <!-- ✅ Show Students Button (per section) -->
+                                <!-- ✅ Show Students Button (per section) -->
+<button type="button" 
+        class="w-auto btn-sm btn-warning"
+        data-bs-toggle="modal"
+        data-bs-target="#studentModal"
+        data-section="<?= htmlspecialchars($section['section_code']); ?>"
+        data-subject="<?= htmlspecialchars($subject['code']); ?>">
+    <i class="bi bi-people-fill me-2"></i>Show
+</button>
+
+
+                            </div>
+
+                            <!-- Section stats badges -->
+                            <span class="badge bg-primary"><?= $section['student_count']; ?> students</span>
+                            <span class="badge bg-success ms-1"><?= $section['regular_count']; ?> Regular</span>
+                            <span class="badge bg-warning text-dark ms-1"><?= $section['irregular_count']; ?> Irregular</span>
+
+                            <!-- ✅ Schedule list with Log Attendance per ss_id -->
+                            <ul class="schedule-list">
+                                <?php foreach ($section['schedules'] as $schedule): ?>
+                                    <li class="schedule-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <i class="bi bi-clock"></i>
+                                            <?= htmlspecialchars($schedule['day']); ?> 
+                                            <?= date('h:i A', strtotime($schedule['start_time'])) . ' - ' . date('h:i A', strtotime($schedule['end_time'])); ?>
+                                            <i class="bi bi-building ms-2"></i> 
+                                            <?= htmlspecialchars($schedule['room']); ?>
+                                        </div>
+
+                                        <!-- ✅ Log Attendance button -->
+                                       <?php
+$schedule_date = $schedule['day']; 
+$start_time = $schedule['start_time']; 
+$end_time = $schedule['end_time'];     
+
+$current_day = date('l'); 
+$current_time = date('H:i:s');
+
+// ✅ Convert times to timestamps for accurate comparison
+$start_timestamp = strtotime($start_time);
+$end_timestamp = strtotime($end_time);
+$current_timestamp = strtotime($current_time);
+
+// ✅ Allow button 15 minutes before class starts
+$early_start = $start_timestamp - (15 * 60); // 15 minutes earlier
+
+$is_today = strtolower($schedule_date) === strtolower($current_day);
+$is_within_time = ($current_timestamp >= $early_start && $current_timestamp <= $end_timestamp);
+$is_disabled = !$is_today || !$is_within_time;
+?>
+
+
+                                        <a href="<?= $is_disabled 
+                                                    ? '#' 
+                                                    : 'subjects/log_attendance.php?subject_code=' . urlencode($subject['code']) . 
+                                                      '&section_id=' . $section['section_id'] . 
+                                                      '&ss_id=' . $schedule['ss_id']; ?>" 
+                                           class="btn btn-sm btn-primary text-nowrap <?= $is_disabled ? 'disabled' : '' ?>" 
+                                           <?= $is_disabled ? 'aria-disabled="true" tabindex="-1" title="Not available at this time"' : '' ?>>
+                                            <i class="bi bi-qr-code-scan me-1"></i>Log Attendance
+                                        </a>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+<?php endforeach; ?>
+
+
             
             <?php if (empty($subjects)): ?>
             <div class="col-12">
@@ -391,6 +517,132 @@ h2.mb-4 {
         </div>
     </div>
 </main>
+
+<!-- Single modal -->
+<div class="modal fade" id="studentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header card-header text-white">
+                <h5 class="modal-title ">Students in <span id="modalSectionCode"></span></h5>
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+       </div>
+            <div class="modal-body">
+                <div class="text-end mb-3">
+                    <span id="modalCounts"></span>
+                </div>
+                <div id="studentList">
+                    <div class="text-center text-muted py-3">
+                        <i class="bi bi-hourglass-split"></i> Loading students...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DataTables CSS -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+
+<!-- DataTables JS -->
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    $('#studentModal').on('shown.bs.modal', function (e) {
+        var button = $(e.relatedTarget); // get the button that triggered the modal
+        var sectionCode = button.data('section'); 
+        var subjectCode = button.data('subject');
+        var termId = <?= $term_id ?>; // PHP variable
+
+        // Update modal title
+        $('#modalSectionCode').text(sectionCode + ' (' + subjectCode + ')');
+
+        // Show loading placeholder
+        $('#studentList').html('<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Loading students...</div>');
+
+        // Fetch students via AJAX
+        $.ajax({
+            url: 'subjects/fetch_students.php',
+            type: 'GET',
+            data: {
+                section_id: sectionCode,
+                subject_code: subjectCode,
+                term_id: termId
+            },
+            success: function(data) {
+                // Inject table into responsive wrapper
+                $('#studentList').html('<div class="table-responsive">' + data + '</div>');
+
+                // Destroy any existing DataTable first to prevent duplication
+                if ($.fn.DataTable.isDataTable('#studentsTable')) {
+                    $('#studentsTable').DataTable().destroy();
+                }
+
+                // Initialize DataTable on the newly loaded table
+                $('#studentsTable').DataTable({
+                    pageLength: 10,
+                    lengthMenu: [5, 10, 25, 50, 100],
+                    responsive: true,
+                    scrollY: '50vh',
+                    scrollCollapse: true,
+                    scrollX: true,
+                    scroller: true,
+                    columnDefs: [
+                        { orderable: false, targets: 3 } // Status column
+                    ]
+                });
+            },
+            error: function() {
+                $('#studentList').html('<div class="text-danger text-center py-3">Failed to load students.</div>');
+            }
+        });
+    });
+
+    // Optional: fix column alignment on modal resize
+    $('#studentModal').on('shown.bs.modal', function() {
+        if ($.fn.DataTable.isDataTable('#studentsTable')) {
+            $('#studentsTable').DataTable().columns.adjust().draw();
+        }
+    });
+
+  $(document).ready(function() {
+    // Add placeholder alert inside the container
+    if ($('#noSearchResult').length === 0) {
+        $('#subjectsContainer').append('<div id="noSearchResult" class="alert alert-info text-center mt-3" style="display:none;">No subjects or sections found.</div>');
+    }
+
+    $('#subjectSearch').on('input', function() {
+        var query = $(this).val().toLowerCase();
+        var visibleCount = 0;
+
+        $('.subject-card-wrapper').each(function() {
+            var subjectText = $(this).text().toLowerCase();
+            if (subjectText.indexOf(query) > -1) {
+                $(this).show();
+                visibleCount++;
+            } else {
+                $(this).hide();
+            }
+        });
+
+        // Show alert inside the container if no cards are visible
+        if (visibleCount === 0) {
+            $('#noSearchResult').show();
+        } else {
+            $('#noSearchResult').hide();
+        }
+    });
+});
+
+ // Clear button functionality
+    $('#clearSearch').on('click', function() {
+        $('#subjectSearch').val('').focus();  // Clear input and focus
+        $('.subject-card-wrapper').show();       // Show all sections
+        $('#noSearchResult').show(); // Hide alert
+    });
+});
+
+</script>
 </body>
 </html>
 

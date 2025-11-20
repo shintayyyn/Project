@@ -1,6 +1,6 @@
 <?php
 error_reporting(0);
-ini_set('display_errors', 0);
+ini_set('display_errors', 1);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -8,132 +8,195 @@ try {
     require_once __DIR__ . '/../../../includes/db.php';
     if (session_status() === PHP_SESSION_NONE) session_start();
 
-    $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && 
-              strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
-
-    $response = ['success' => false, 'message' => ''];
-
+    // --- Authorization check ---
     if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'dean') {
         throw new Exception('Unauthorized access');
     }
 
+    // --- Method check ---
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         throw new Exception('Invalid request method');
     }
 
-    if (empty($_POST['s_id'])) {
-        throw new Exception('Student ID is required');
-    }
+        // --- Get current active term ---
+$term_row = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1")->fetch_assoc();
+$term_id = $term_row['term_id'] ?? null;
+if (!$term_id) throw new Exception('No active term found.');
+
+    // --- Validation ---
+    if (empty($_POST['s_id'])) throw new Exception('Student ID is required');
 
     $id = filter_var($_POST['s_id'], FILTER_VALIDATE_INT);
-    $email = !empty($_POST['s_email']) ? filter_var(trim($_POST['s_email']), FILTER_VALIDATE_EMAIL) : null;
+    $email = !empty($_POST['s_email']) ? filter_var($_POST['s_email'], FILTER_VALIDATE_EMAIL) : null;
 
-    if ($id === false) {
-        throw new Exception('Invalid student ID');
-    }
-    if ($email === false && !empty($_POST['s_email'])) {
-        throw new Exception('Invalid email format');
-    }
+    if ($id === false) throw new Exception('Invalid student ID');
+    if ($email === false && !empty($_POST['s_email'])) throw new Exception('Invalid email format');
 
-    $conn->begin_transaction();
+    // --- Fetch existing student and degree ---
+    $stmt = $conn->prepare("
+        SELECT s.s_fname, s.s_lname, s.s_mname, s.s_suffix,
+               s.s_gender, s.s_bdate, s.s_cnum, s.s_address,
+               s.s_email, s.s_status, s.year_level, s.is_regular, sd.degree_id
+        FROM students s
+        LEFT JOIN (
+            SELECT * FROM students_degrees WHERE status = 'Active'
+        ) sd ON s.s_id = sd.s_id
+        WHERE s.s_id = ?
+    ");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $currentData = $result->fetch_assoc();
+    $stmt->close();
 
-    // Prepare variables
-    $fname = trim($_POST['s_fname']);
-    $lname = trim($_POST['s_lname']);
-    $mname = trim($_POST['s_mname'] ?? '');
-    $suffix = trim($_POST['s_suffix'] ?? '');
-    $gender = $_POST['s_gender'];
-    $bdate = $_POST['s_bdate'];
-    $cnum = trim($_POST['s_cnum'] ?? '');
-    $status = $_POST['s_status'];
-    $degree_id = $_POST['degree_id'];
+    if (!$currentData) throw new Exception('Student record not found.');
 
-    // Get degree_code
+    // --- Prepare new input data ---
+    $newData = [
+        's_fname'    => $_POST['s_fname'],
+        's_mname'    => $_POST['s_mname'] ?? '',
+        's_lname'    => $_POST['s_lname'],
+        's_suffix'   => $_POST['s_suffix'] ?? '',
+        's_gender'   => $_POST['s_gender'],
+        's_bdate'    => $_POST['s_bdate'],
+        's_cnum'     => $_POST['s_cnum'] ?? '',
+        's_address'  => $_POST['s_address'] ?? '',
+        's_email'    => $email,
+        's_status'   => $_POST['s_status'],
+       'year_level' => isset($_POST['year_level']) ? (int)$_POST['year_level'] : $currentData['year_level'],
+        'is_regular' => isset($_POST['is_regular']) ? (int)$_POST['is_regular'] : $currentData['is_regular'],
+        'degree_id'  => $_POST['degree_id']
+    ];
+
+    // --- Compare old and new data to detect changes ---
+    $changes = array_diff_assoc($newData, $currentData);
+
+    // --- Get degree code ---
     $degree_query = $conn->prepare("SELECT degree_code FROM degrees WHERE degree_id = ?");
-    $degree_query->bind_param("i", $degree_id);
+    $degree_query->bind_param("i", $newData['degree_id']);
     $degree_query->execute();
     $degree_result = $degree_query->get_result();
     $degree_data = $degree_result->fetch_assoc();
+    $degree_code = $degree_data['degree_code'] ?? null;
     $degree_query->close();
+    if (!$degree_code) throw new Exception('Invalid degree selected.');
 
-    if (!$degree_data) {
-        throw new Exception("Degree not found for ID: $degree_id");
-    }
+    $conn->begin_transaction();
 
-    $degree_code = $degree_data['degree_code'];
+    // --- Update main student record ---
+    $stmt2 = $conn->prepare("
+        UPDATE students SET 
+            s_fname = ?, s_lname = ?, s_mname = NULLIF(?, ''), 
+            s_suffix = NULLIF(?, ''), s_gender = ?, s_bdate = ?, 
+            s_cnum = NULLIF(?, ''), s_address = NULLIF(?, ''), 
+            s_email = NULLIF(?, ''), s_status = ?, year_level = ?, is_regular = ?
+        WHERE s_id = ?
+    ");
+  $stmt2->bind_param(
+    "ssssssssssiii", // 10 strings + 3 integers = 13
+    $newData['s_fname'],
+    $newData['s_lname'],
+    $newData['s_mname'],
+    $newData['s_suffix'],
+    $newData['s_gender'],
+    $newData['s_bdate'],
+    $newData['s_cnum'],
+    $newData['s_address'],
+    $newData['s_email'],
+    $newData['s_status'], // string
+    $newData['year_level'], // integer
+    $newData['is_regular'], // integer
+    $id // integer
+);
 
-    // Update students table
-    $stmt2 = $conn->prepare("UPDATE students SET 
-        s_fname = ?, s_lname = ?, s_mname = NULLIF(?, ''), 
-        s_suffix = NULLIF(?, ''), s_gender = ?, s_bdate = ?, 
-        s_cnum = NULLIF(?, ''), s_email = NULLIF(?, ''), s_status = ? 
-        WHERE s_id = ? LIMIT 1");
 
-    $stmt2->bind_param("sssssssssi", 
-        $fname, $lname, $mname, $suffix, $gender, $bdate,
-        $cnum, $email, $status, $id
-    );
     $stmt2->execute();
     $stmt2->close();
 
-    // Update degree info in students_degrees
-    $stmt3 = $conn->prepare("UPDATE students_degrees SET 
-        degree_id = ?, degree_code = ? 
-        WHERE s_id = ? LIMIT 1");
+   
+if ($newData['degree_id'] != $currentData['degree_id']) {
+    // Fetch active degree for current term
+    $stmt_deg_check = $conn->prepare("
+        SELECT sd_id FROM students_degrees 
+        WHERE s_id = ? AND status = 'Active' AND term_id = ?
+        ORDER BY enrollment_date DESC LIMIT 1
+    ");
+    $stmt_deg_check->bind_param("ii", $id, $term_id);
+    $stmt_deg_check->execute();
+    $res_deg = $stmt_deg_check->get_result();
+    $existingDeg = $res_deg->fetch_assoc();
+    $stmt_deg_check->close();
 
-    $stmt3->bind_param("isi", $degree_id, $degree_code, $id);
-    $stmt3->execute();
-    $stmt3->close();
-
-    // Fetch parent info (optional to return for UI update)
-    $parent_sql = "
-        SELECT p.p_id, p.p_fname, p.p_lname, p.p_mname, p.p_suffix, p.p_email, p.p_cnum
-        FROM parents p
-        INNER JOIN parent_student ps ON ps.p_id = p.p_id
-        WHERE ps.s_id = ?
-        LIMIT 1
-    ";
-    $parent_stmt = $conn->prepare($parent_sql);
-    $parent_stmt->bind_param("i", $id);
-    $parent_stmt->execute();
-    $parent_result = $parent_stmt->get_result();
-    $parent_data = $parent_result->fetch_assoc();
-    $parent_stmt->close();
+    if ($existingDeg) {
+        // Update existing active degree
+        $stmt_update_deg = $conn->prepare("
+            UPDATE students_degrees 
+            SET degree_id = ?, degree_code = ?
+            WHERE sd_id = ?
+        ");
+        $stmt_update_deg->bind_param("isi", $newData['degree_id'], $degree_code, $existingDeg['sd_id']);
+        $stmt_update_deg->execute();
+        $stmt_update_deg->close();
+    } else {
+        // Insert new degree for this term
+        $stmt_insert_deg = $conn->prepare("
+            INSERT INTO students_degrees (s_id, degree_id, degree_code, status, term_id) 
+            VALUES (?, ?, ?, 'Active', ?)
+        ");
+        $stmt_insert_deg->bind_param("iisi", $id, $newData['degree_id'], $degree_code, $term_id);
+        $stmt_insert_deg->execute();
+        $stmt_insert_deg->close();
+    }
+}
 
     $conn->commit();
 
+    // --- Fetch updated student with section and parent ---
+    $stmt4 = $conn->prepare("
+        SELECT 
+            s.*, sd.degree_code, ss.section_id, sec.section_code,
+            CONCAT(
+                p.p_fname, ' ',
+                COALESCE(CONCAT(p.p_mname, ' '), ''),
+                p.p_lname,
+                COALESCE(CONCAT(' ', p.p_suffix), '')
+            ) AS parent_fullname
+        FROM students s
+        LEFT JOIN (
+            SELECT * FROM students_degrees sd1 WHERE status = 'Active'
+        ) sd ON s.s_id = sd.s_id
+      LEFT JOIN students_sections ss ON s.s_id = ss.s_id AND ss.term_id = $term_id
+        LEFT JOIN sections sec ON ss.section_id = sec.section_id
+        LEFT JOIN parent_student ps ON s.s_id = ps.s_id
+        LEFT JOIN parents p ON ps.p_id = p.p_id
+        WHERE s.s_id = ?
+        LIMIT 1
+    ");
+    $stmt4->bind_param("i", $id);
+    $stmt4->execute();
+    $result4 = $stmt4->get_result();
+    $student = $result4->fetch_assoc();
+    $stmt4->close();
+
+    // --- Calculate age ---
+    $student['age'] = !empty($student['s_bdate']) ? (int)date_diff(date_create($student['s_bdate']), date_create('today'))->y : null;
+    $student['parent_fullname'] = !empty($student['parent_fullname']) ? $student['parent_fullname'] : 'No record';
+
     echo json_encode([
         'success' => true,
-        'message' => 'Student updated successfully',
-        'title' => 'Success!',
-        'data' => [
-            's_id' => $id,
-            's_fname' => $fname,
-            's_lname' => $lname,
-            's_mname' => $mname,
-            's_suffix' => $suffix,
-            's_gender' => $gender,
-            's_bdate' => $bdate,
-            's_cnum' => $cnum,
-            's_email' => $email,
-            's_status' => $status,
-            'degree_id' => $degree_id,
-            'degree_code' => $degree_code,
-            'parent' => $parent_data ?: null
-        ]
+        'message' => 'Student updated successfully.',
+        'title'   => 'Success!',
+        'data' => $student
     ]);
     exit;
 
 } catch (Throwable $e) {
-    if (isset($conn) && $conn->ping()) {
-        $conn->rollback();
-    }
-
-    http_response_code(500);
+    if (isset($conn) && $conn->ping()) $conn->rollback();
     echo json_encode([
         'success' => false,
         'message' => $e->getMessage(),
-        'title' => 'Error!'
+        'title'   => 'Error!'
     ]);
     exit;
 }
+?>

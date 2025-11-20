@@ -436,7 +436,7 @@ while ($row = $avail_result->fetch_assoc()) {
     <main>
         <div class="row align-items-center mb-4">
             <div class="col-md-6">
-                <h2 class="mb-0 fw-bold">My Teaching Schedule</h2>
+                <h2 class="m-2 fw-bold">My Teaching Schedule</h2>
                  <nav aria-label="breadcrumb">
                 <ol class="breadcrumb m-2">
                     <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
@@ -727,7 +727,7 @@ while ($row = $avail_result->fetch_assoc()) {
             </div>
         </div>
 
-    <script>
+<script>
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.querySelector('#plotScheduleModal form');
             const submitBtn = form.querySelector('button[type="submit"]');
@@ -953,7 +953,7 @@ viewButtons.forEach(btn => {
                         viewBtn.classList.remove('d-none');
 
                         const ext = file.split('.').pop().toLowerCase();
-                        const path = `/uploads/remarks/${file}`;
+                        const path = `../uploads/remarks/${file}`;
 
                         if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
                             previewArea.innerHTML = `<img src="${path}" class="img-fluid rounded shadow-sm" style="max-height: 600px;">`;

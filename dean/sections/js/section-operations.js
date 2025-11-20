@@ -6,7 +6,7 @@ $(document).ready(function() {
         
         if (confirm('Are you sure you want to delete this section? This action cannot be undone.')) {
             $.ajax({
-                url: '/Project/dean/sections/processes/delete_section.php',
+                url: '/dean/sections/processes/delete_section.php',
                 type: 'POST',
                 data: JSON.stringify({ section_id: sectionId }),
                 contentType: 'application/json',
@@ -28,44 +28,7 @@ $(document).ready(function() {
         }
     });
 
-    // Assign/Edit Advisor Modal Handler
-    $('#assignAdvisorModal').on('show.bs.modal', function(event) {
-        const button = $(event.relatedTarget);
-        const sectionId = button.data('section-id');
-        const sectionCode = button.data('section-code');
-        const currentAdvisorId = button.data('advisor-id');
-        
-        // Store section info in the form
-        $('#advisorSectionId').val(sectionId);
-        $('#advisorSectionCode').val(sectionCode);
-        
-        // Fetch available teachers
-        $.ajax({
-            url: '/Project/dean/sections/processes/get_available_teachers.php',
-            type: 'GET',
-            success: function(response) {
-                const data = typeof response === 'string' ? JSON.parse(response) : response;
-                if (data.success) {
-                    const $select = $('#teacherSelect');
-                    $select.empty().append('<option value="">Choose an advisor...</option>');
-                    
-                    data.teachers.forEach(teacher => {
-                        const selected = teacher.t_id === currentAdvisorId ? 'selected' : '';
-                        $select.append(`
-                            <option value="${teacher.t_id}" ${selected}>
-                                ${teacher.t_lname}, ${teacher.t_fname} ${teacher.t_mname ? teacher.t_mname.charAt(0) + '.' : ''}
-                            </option>
-                        `);
-                    });
-                } else {
-                    showAlert('danger', data.message || 'Failed to load available teachers');
-                }
-            },
-            error: function() {
-                showAlert('danger', 'Server error occurred while loading teachers');
-            }
-        });
-    });
+
 
     // Assign Advisor Form Submit Handler
     $('#assignAdvisorForm').on('submit', function(e) {
@@ -84,7 +47,7 @@ $(document).ready(function() {
         };
 
         $.ajax({
-            url: '/Project/dean/sections/processes/assign_advisor.php',
+            url: '  /dean/sections/processes/assign_advisor.php',
             type: 'POST',
             data: JSON.stringify(data),
             contentType: 'application/json',
@@ -135,7 +98,7 @@ $(document).ready(function() {
         
         if (confirm('Are you sure you want to remove this advisor from the section?')) {
             $.ajax({
-                url: '/Project/dean/sections/processes/unassign_advisor.php',
+                url: '/dean/sections/processes/unassign_advisor.php',
                 type: 'POST',
                 data: JSON.stringify({ section_id: sectionId }),
                 contentType: 'application/json',
@@ -167,16 +130,4 @@ $(document).ready(function() {
         }
     });
 
-    // Helper function to show alerts
-    function showAlert(type, message) {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
-        alertDiv.style.zIndex = '1050';
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        document.body.appendChild(alertDiv);
-        setTimeout(() => alertDiv.remove(), 3000);
-    }
 });

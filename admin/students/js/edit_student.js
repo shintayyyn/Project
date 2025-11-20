@@ -174,9 +174,9 @@ $(document).ready(function() {
             </td>
             <td>${data.section_code
                     ? `<span class="badge rounded-pill" style="background: var(--tertiary); color: var(--primary);">${data.section_code}</span>`
-                    : `<span class="badge rounded-pill" style="background: var(--tertiary); color: var(--primary);">Not yet assigned</span>`
+                    : `<span class="badge rounded-pill bg-secondary" >Not yet assigned</span>`
                 }</td>
-            <td>
+            <td class="d-none">
                 
                 ${data.is_regular == 1 || data.is_regular === true || data.is_regular === "1"
             ? `<span class="badge rounded-pill bg-success">REGULAR</span>`

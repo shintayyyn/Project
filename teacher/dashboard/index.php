@@ -479,9 +479,13 @@ main {
 }
 
 .stat-value {
+    font-size: 1.25rem;
     font-weight: 600;
     color: var(--primary);
-    font-size: 1.25rem;
+}
+
+.stat-value.advisory_sections {
+    font-size: 16px;
 }
 
 @media (max-width: 768px) {
@@ -541,7 +545,7 @@ main {
                                             <i class="bi bi-person-badge-fill"></i>
                                             <div class="stat-text">
                                                 <span class="stat-label">ID Number</span>
-                                                <span class="stat-value"><?php echo htmlspecialchars($teacher['t_id']); ?></span>
+                                                <span class="stat-value"><?php echo htmlspecialchars($teacher['idcode']); ?></span>
                                             </div>
                                         </div>
                                     </div>
@@ -564,21 +568,21 @@ main {
                                         </div>
                                     </div>
                                      <div class="col">
-    <div class="stat-item">
-        <i class="bi bi-people"></i>
-        <div class="stat-text">
-            <span class="stat-label">Advisory Class</span>
-            <span class="stat-value">
-                <?php 
-                if (!empty($advisory_sections)) {
-                    echo implode(", ", $advisory_sections); // ex: BSIT-1A, BSIT-2B
-                } else {
-                    echo "None";
-                }
-                ?>
-            </span>
-        </div>
-    </div>
+                                    <div class="stat-item">
+                                        <i class="bi bi-people"></i>
+                                        <div class="stat-text">
+                                            <span class="stat-label">Advisory Class</span>
+                                            <span class="stat-value advisory_sections text-center">
+                                                <?php 
+                                                if (!empty($advisory_sections)) {
+                                                    echo implode(", ", $advisory_sections); // ex: BSIT-1A, BSIT-2B
+                                                } else {
+                                                    echo "None";
+                                                }
+                                                ?>
+                                            </span>
+                                        </div>
+                                     </div>
                                     </div>
                                 </div>
                             </div>

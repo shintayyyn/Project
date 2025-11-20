@@ -1,144 +1,304 @@
 <?php
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
+require_once __DIR__ . '/../../includes/db.php';
+require_once __DIR__ . '/../../includes/mailer.php';
+require_once __DIR__ . '/../../includes/PhpMailer/vendor/autoload.php';
 
-require_once __DIR__ . '/../../includes/PHPMailer/src/Exception.php';
-require_once __DIR__ . '/../../includes/PHPMailer/src/PHPMailer.php';
-require_once __DIR__ . '/../../includes/PHPMailer/src/SMTP.php';
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 
 header('Content-Type: application/json');
+date_default_timezone_set('Asia/Manila');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(["status" => "error", "message" => "Invalid request method."]);
-    exit;
-}
-
-require __DIR__ . '/../../includes/db.php';
 $student_id = $_POST['student_id'] ?? null;
-
 if (!$student_id) {
     echo json_encode(["status" => "error", "message" => "Student ID missing"]);
     exit;
 }
 
-// Fetch attendance
-$stmt = $conn->prepare("SELECT s_id, subject_code, section_code, time_in, time_out, status FROM attendance WHERE s_id = ?");
-$stmt->bind_param("s", $student_id);
+// --- Fetch student info ---
+$stmt = $conn->prepare("SELECT idcode, s_email, s_lname, s_fname, s_mname, s_suffix, is_regular, year_level FROM students WHERE s_id=?");
+$stmt->bind_param("i", $student_id);
 $stmt->execute();
-$result = $stmt->get_result();
-$attendance = $result->fetch_all(MYSQLI_ASSOC);
+$student = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
-if (!$attendance) {
-    echo json_encode(["status" => "error", "message" => "No attendance records found."]);
+$year_level = $student['year_level'] ?? '-';
+
+
+// Fetch department (degree code)
+$stmt = $conn->prepare("
+    SELECT d.degree_code 
+    FROM students_degrees sd
+    JOIN degrees d ON sd.degree_id = d.degree_id
+    WHERE sd.s_id = ?
+    LIMIT 1
+");
+$stmt->bind_param("i", $student_id);
+$stmt->execute();
+$degreeRow = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+
+$department = $degreeRow['degree_code'] ?? '-';
+
+
+if (!$student) {
+    echo json_encode(["status" => "error", "message" => "Student not found"]);
     exit;
 }
 
-// Fetch student email
-$stmt2 = $conn->prepare("SELECT s_email FROM students WHERE s_id = ?");
-$stmt2->bind_param("s", $student_id);
-$stmt2->execute();
-$res2 = $stmt2->get_result();
-$student = $res2->fetch_assoc();
+$student_idcode = $student['idcode'];
+$student_type = $student['is_regular'];
 $recipient = $student['s_email'] ?? null;
-$stmt2->close();
-
 if (!$recipient) {
     echo json_encode(["status" => "error", "message" => "Student email not found"]);
     exit;
 }
 
-error_log("Sending report to Student ID: $student_id, Email: $recipient");
+// --- Check email verification ---
+$stmt = $conn->prepare("SELECT verified FROM email_verifications WHERE user_id=? AND user_type='student' AND new_email=? ORDER BY created_at DESC LIMIT 1");
+$stmt->bind_param("is", $student_id, $recipient);
+$stmt->execute();
+$email_verification = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 
-// Get timestamp
-$timeResult = $conn->query("SELECT NOW() AS generated_time");
-$timeRow = $timeResult->fetch_assoc();
-$generatedAt = date("M d, Y h:i A", strtotime($timeRow['generated_time']));
-
-// Count Present & Absent
-$presentCount = $absentCount = 0;
-foreach ($attendance as $row) {
-    $status = strtolower($row['status']);
-    if ($status === "present") $presentCount++;
-    elseif ($status === "absent") $absentCount++;
+if (!$email_verification || !$email_verification['verified']) {
+    echo json_encode(["status" => "warning", "message" => "Email not verified"]);
+    exit;
 }
 
-// Generate CSV in memory
-$csv = fopen('php://temp', 'r+');
-fputcsv($csv, ["Attendance Report for Student ID: $student_id"]);
-fputcsv($csv, ["Generated At: $generatedAt"]);
-fputcsv($csv, ["Total Present: $presentCount", "Total Absent: $absentCount"]);
-fputcsv($csv, []);
-fputcsv($csv, ["Student ID", "Subject", "Section", "Date", "Time", "Status"]);
-
-foreach ($attendance as $row) {
-    $date = $row['time_in'] ? date('M d, Y', strtotime($row['time_in'])) : 'N/A';
-    $time = ($row['time_in'] ? date('h:i A', strtotime($row['time_in'])) : '-') . " - " .
-            ($row['time_out'] ? date('h:i A', strtotime($row['time_out'])) : '-');
-    fputcsv($csv, [$row['s_id'], $row['subject_code'], $row['section_code'], $date, $time, $row['status']]);
+// --- Fetch all term IDs ---
+$term_ids = [];
+if ($student_type == 1) {
+    $stmt = $conn->prepare("
+        SELECT DISTINCT ss.term_id
+        FROM sections_schedules ss
+        JOIN students_sections ssec ON ssec.section_id = ss.section_id
+        WHERE ssec.s_id=?
+    ");
+} else {
+    $stmt = $conn->prepare("SELECT DISTINCT term_id FROM subject_enrollments WHERE s_id=?");
 }
-rewind($csv);
-$csvContent = stream_get_contents($csv);
-fclose($csv);
+$stmt->bind_param("i", $student_id);
+$stmt->execute();
+$term_ids = array_column($stmt->get_result()->fetch_all(MYSQLI_ASSOC), 'term_id');
+$stmt->close();
 
-// Generate Pie Chart in memory
-$width = 400; $height = 400;
-$image = imagecreate($width, $height);
-$white = imagecolorallocate($image, 255, 255, 255);
-$black = imagecolorallocate($image, 0, 0, 0);
-$green = imagecolorallocate($image, 0, 200, 0);
-$red   = imagecolorallocate($image, 200, 0, 0);
-
-$total = max(1, $presentCount + $absentCount);
-$presentAngle = round(($presentCount / $total) * 360);
-$absentAngle = 360 - $presentAngle;
-
-imagefilledarc($image, $width/2, $height/2, 300, 300, 0, $presentAngle, $green, IMG_ARC_PIE);
-imagefilledarc($image, $width/2, $height/2, 300, 300, $presentAngle, 360, $red, IMG_ARC_PIE);
-
-imagestring($image, 5, 10, 10, "Attendance Report", $black);
-imagestring($image, 4, 20, 350, "Present: $presentCount", $green);
-imagestring($image, 4, 200, 350, "Absent: $absentCount", $red);
-
-ob_start();
-imagepng($image);
-$chartContent = ob_get_clean();
-imagedestroy($image);
-
-// Send email immediately
-$sent = false;
-$mail = new PHPMailer(true);
-try {
-    $mail->isSMTP();
-    $mail->Host       = 'smtp.gmail.com';
-    $mail->SMTPAuth   = true;
-    $mail->Username   = 'attendifysys2025@gmail.com';
-    $mail->Password   = 'lyhmcgprzmvnojwz';
-    $mail->SMTPSecure = 'tls';
-    $mail->Port       = 587;
-    $mail->SMTPDebug  = 0;
-    $mail->Timeout = 60;
-
-    $mail->setFrom('attendifysys2025@gmail.com', 'Attendify');
-    $mail->addAddress($recipient);
-    $mail->Subject = "Attendance Report - Student $student_id";
-    $mail->Body    = "Dear Student,\n\nPlease find attached your attendance report.\nGenerated At: $generatedAt\n\nSummary:\n - Present: $presentCount\n - Absent: $absentCount\n\nRegards,\nAttendify";
-
-    $mail->addStringAttachment($csvContent, "attendance_report_{$student_id}.csv", 'base64', 'text/csv');
-    $mail->addStringAttachment($chartContent, "attendance_graph_{$student_id}.png", 'base64', 'image/png');
-
-    $mail->send();
-    $sent = true;
-} catch (Exception $e) {
-    error_log("Mailer Error: {$mail->ErrorInfo}");
+if (!$term_ids) {
+    echo json_encode(["status" => "error", "message" => "No academic terms found for this student"]);
+    exit;
 }
+
+// --- Fetch term labels ---
+$term_labels = [];
+foreach ($term_ids as $term_id) {
+    $stmt = $conn->prepare("
+        SELECT ay.year_start, ay.year_end, at.semester
+        FROM academic_terms at
+        JOIN academic_years ay ON at.ay_id = ay.ay_id
+        WHERE at.term_id=?
+    ");
+    $stmt->bind_param("i", $term_id);
+    $stmt->execute();
+    $term = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    $term_labels[$term_id] = "A.Y. {$term['year_start']}-{$term['year_end']} | {$term['semester']}";
+}
+
+// --- Fetch subjects per term ---
+$subjects_per_term = [];
+foreach ($term_ids as $term_id) {
+    if ($student_type == 1) {
+        $stmt = $conn->prepare("
+            SELECT DISTINCT ss.subject_code, s.section_code
+            FROM sections_schedules ss
+            JOIN students_sections ssec ON ssec.section_id = ss.section_id
+            JOIN sections s ON s.section_id = ss.section_id
+            WHERE ssec.s_id=? AND ss.term_id=?
+        ");
+    } else {
+        $stmt = $conn->prepare("
+            SELECT subject_code, section_code
+            FROM subject_enrollments
+            WHERE s_id=? AND term_id=?
+        ");
+    }
+    $stmt->bind_param("ii", $student_id, $term_id);
+    $stmt->execute();
+    $results = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    foreach ($results as $r) {
+        $subjects_per_term[$term_id][$r['subject_code']] = $r['section_code'];
+    }
+}
+
+// -----------------------------------------------------------
+// FUNCTIONS FOR STYLES
+// -----------------------------------------------------------
+function styleHeaderRow($sheet, $row)
+{
+    $sheet->getStyle("A{$row}:E{$row}")->applyFromArray([
+        'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+        'fill' => ['fillType' => 'solid', 'color' => ['rgb' => '033A70']],
+        'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+        'borders' => ['allBorders' => ['borderStyle' => 'thin']]
+    ]);
+}
+
+function styleBody($sheet, $start, $end)
+{
+    $sheet->getStyle("A{$start}:E{$end}")->applyFromArray([
+        'borders' => ['allBorders' => ['borderStyle' => 'thin']],
+        'alignment' => ['vertical' => 'center']
+    ]);
+}
+
+// -----------------------------------------------------------
+// CREATE SPREADSHEET
+// -----------------------------------------------------------
+$spreadsheet = new Spreadsheet();
+$sheetIndex = 0;
+
+foreach ($subjects_per_term as $term_id => $subjects) {
+
+    $sheet = $sheetIndex === 0 ? $spreadsheet->getActiveSheet() : $spreadsheet->createSheet();
+    $sheet->setTitle(substr($term_labels[$term_id], 0, 31));
+
+    // -----------------------------
+    // HEADER + LOGO
+    // -----------------------------
+    $logo = new Drawing();
+    $logo->setName('Logo');
+    $logo->setDescription('School Logo');
+    $logo->setPath(__DIR__ . '/../../assets/img/attendifylogo.png'); // adjust path
+    $logo->setHeight(70);
+    $logo->setCoordinates('A1');
+    $logo->setOffsetX(5);
+    $logo->setWorksheet($sheet);  // <-- correct method
+
+
+    // Centered text
+    $sheet->mergeCells("A2:E2");
+    $sheet->mergeCells("A3:E3");
+    $sheet->mergeCells("A4:E4");
+
+    $sheet->setCellValue("A2", "COLLEGE SCHOOL");
+    $sheet->setCellValue("A3", "1st Sample Street, Sample City");
+    $sheet->setCellValue("A4", "Tel. (032) 123-456 | Email: attendifysys2025@gmail.com");
+
+    $sheet->getStyle("A2:A4")->applyFromArray([
+        'font' => ['bold' => true, 'size' => 14],
+        'alignment' => ['horizontal' => 'center']
+    ]);
+
+    // Divider
+    $sheet->getStyle("A5:E5")->applyFromArray([
+        'borders' => ['bottom' => ['borderStyle' => 'medium']]
+    ]);
+
+    $row = 7;
+
+    // --- Student Info ---
+    $sheet->setCellValue("A{$row}", "Student ID")->setCellValue("B{$row}", $student_idcode);
+    $row++;
+
+    $sheet->setCellValue("A{$row}", "Academic Term")->setCellValue("B{$row}", $term_labels[$term_id]);
+    $row++;
+
+    $sheet->setCellValue("A{$row}", "Student Type")->setCellValue("B{$row}", $student_type ? 'Regular' : 'Irregular');
+    $row++;
+
+    $sheet->setCellValue("A{$row}", "Department")->setCellValue("B{$row}", $department);
+    $row++;
+
+    $sheet->setCellValue("A{$row}", "Year Level")->setCellValue("B{$row}", $year_level);
+    $row += 2;
+
+
+    // -----------------------------------------------------------
+    // SUBJECT PROCESSING
+    // -----------------------------------------------------------
+    foreach ($subjects as $subject_code => $section_code) {
+
+        $sheet->setCellValue("A{$row}", "Subject: $subject_code (Section: $section_code)");
+        $row++;
+
+        // Table headers
+        $sheet->fromArray(["#", "Date", "Time In", "Time Out", "Status"], NULL, "A{$row}");
+        styleHeaderRow($sheet, $row);
+        $row++;
+
+        // Attendance
+        $stmt = $conn->prepare("
+            SELECT status, time_in, time_out
+            FROM attendance
+            WHERE s_id=? AND subject_code=? AND section_code=?
+            ORDER BY time_in ASC
+        ");
+        $stmt->bind_param("iss", $student_id, $subject_code, $section_code);
+        $stmt->execute();
+        $attendance = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        $present = $late = $absent = $excused = 0;
+        $startRow = $row;
+
+        if ($attendance) {
+            $i = 1;
+            foreach ($attendance as $rec) {
+                $date = $rec['time_in'] ? date('M d, Y', strtotime($rec['time_in'])) : '-';
+                $time_in = $rec['time_in'] ? date('h:i A', strtotime($rec['time_in'])) : '-';
+                $time_out = $rec['time_out'] ? date('h:i A', strtotime($rec['time_out'])) : '-';
+                $status = $rec['status'];
+
+                $s = strtolower($status);
+                if ($s === 'present') $present++;
+                elseif ($s === 'late') $late++;
+                elseif ($s === 'absent') $absent++;
+                elseif ($s === 'excuse') $excused++;
+
+                $sheet->fromArray([$i++, $date, $time_in, $time_out, $status], NULL, "A{$row}");
+                $row++;
+            }
+        } else {
+            $sheet->fromArray([1, '-', '-', '-', '-'], NULL, "A{$row}");
+            $row++;
+        }
+
+        styleBody($sheet, $startRow, $row - 1);
+
+        // Summary
+        $sheet->fromArray(["Summary", "Present: $present, Late: $late, Absent: $absent, Excused: $excused"], NULL, "A{$row}");
+        $row += 2;
+    }
+
+    $sheetIndex++;
+}
+
+// --- Save and send ---
+$temp_file = tempnam(sys_get_temp_dir(), "attendance_report_") . ".xlsx";
+$writer = new Xlsx($spreadsheet);
+$writer->save($temp_file);
+
+$subject = "Attendance Report - {$student_idcode}";
+$body = "Dear Student,<br><br>Please find attached your attendance report.<br><br>Regards,<br>Attendify";
+
+$mailResult = sendMail(
+    $recipient,
+    $subject,
+    $body,
+    [file_get_contents($temp_file)],
+    ["Attendance_Report_{$student_idcode}.xlsx"],
+    true
+);
+
+unlink($temp_file);
 
 echo json_encode([
     "status" => "success",
     "message" => "Report generated and email sent.",
-    "emailSent" => $sent,
-    "generatedAt" => $generatedAt,
-    "presentCount" => $presentCount,
-    "absentCount" => $absentCount
+    "emailSent" => $mailResult['success']
 ]);
 exit;

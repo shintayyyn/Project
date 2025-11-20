@@ -1,8 +1,8 @@
 <?php
-// Remove session_start since it's already started in dashboard.php
+// dashboard.php already has session_start()
 require_once(__DIR__ . '/../../includes/db.php');
 
-// Check if user is logged in and has dean privileges
+// Check if user is dean
 if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'dean') {
     header('Location: ../../login.php');
     exit();
@@ -10,86 +10,77 @@ if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'dean') {
 ?>
 
 <style>
-.table-responsive {
-    overflow-x: hidden;
-}
-.table td {
-    max-width: 200px;
+table{
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
-.btn-group {
-    display: flex;
-    gap: 2px;
+/* Make all action buttons same size and aligned */
+.action-btn {
+    width: 38px;        /* fixed width */
+    height: 38px;       /* fixed height */
+    padding: 0;         /* remove extra padding */
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 14px;    /* adjust icon size if needed */
+    border-radius: 4px; /* optional: keep rounded corners */
 }
-/* Fix for entries per page dropdown */
-.dataTables_length select {
-    min-width: 70px !important;
-    padding-right: 25px !important;
-}
-</style>
 
+#roomsTable td.text-center {
+    white-space: nowrap; /* prevent buttons from wrapping */
+}
+
+</style>
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="mb-1">Room Management</h2>
             <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-0">
-                    <li class="breadcrumb-item"><a href="../dashboard.php">Dashboard</a></li>
-                    <li class="breadcrumb-item active">Rooms</li>
-                </ol>
-            </nav>
+      <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>
+        <li class="breadcrumb-item active">Rooms</li>
+      </ol>
+    </nav>
         </div>
-    </div>
-
-    <div class="row mb-4">
-        <div class="col">
-            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addRoomModal">
-                <i class="bi bi-plus-lg me-2"></i>Add New Room
-            </button>
-        </div>
+        <button type="button" class="btn btn-primary w-auto" data-bs-toggle="modal" data-bs-target="#addRoomModal">
+            <i class="bi bi-plus-lg me-2"></i>Add New Room
+        </button>
     </div>
 
     <div class="card">
-        <div class="card-header ">
-            <div class="d-flex justify-content-between align-items-center">
-                <h5 class="card-title mb-0">Rooms List</h5>
-            </div>
+        <div class="card-header">
+            <h5 class="card-title mb-0">Rooms List</h5>
         </div>
-        <div class="card-body p-0">
-            <div class="px-4 py-3">
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0" id="roomsTable">
-                        <thead>
-                            <tr>
-                                <th>Room Number</th>
-                                <th>Capacity</th>
-                                <th class="text-end">Actions</th>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="roomsTable">
+                    <thead>
+                        <tr>
+                            <th>Room</th>
+                            <th>Capacity</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        $query = "SELECT * FROM rooms ORDER BY room_number";
+                        $result = mysqli_query($conn, $query);
+                        while ($room = mysqli_fetch_assoc($result)) {
+                            ?>
+                            <tr id="room-<?php echo $room['room_id']; ?>">
+                                <td><?php echo htmlspecialchars($room['room_number']); ?></td>
+                                <td><?php echo htmlspecialchars($room['capacity']); ?></td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary action-btn edit-room" data-id="<?php echo $room['room_id']; ?>">
+                                        <i class="fa-solid fa-pen-to-square"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger action-btn delete-room" data-id="<?php echo $room['room_id']; ?>">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                            $query = "SELECT * FROM rooms ORDER BY room_number";
-                            $result = mysqli_query($conn, $query);
-                            while ($room = mysqli_fetch_assoc($result)) {
-                                ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($room['room_number']); ?></td>
-                                    <td><?php echo htmlspecialchars($room['capacity']); ?></td>
-                                    <td class="text-end">
-                                        <button class="btn btn-sm btn-primary edit-room" data-id="<?php echo $room['room_id']; ?>">
-                                            <i class="bi bi-pencil me-1"></i> Edit
-                                        </button>
-                                        <button class="btn btn-sm btn-danger delete-room" data-id="<?php echo $room['room_id']; ?>">
-                                            <i class="bi bi-trash me-1"></i> Delete
-                                        </button>
-                                    </td>
-                                </tr>
-                            <?php } ?>
-                        </tbody>
-                    </table>
-                </div>
+                        <?php } ?>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -152,19 +143,20 @@ if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'dean') {
     </div>
 </div>
 
-<!-- Initialize DataTable and Event Handlers -->
 <script>
 $(document).ready(function () {
-    $('table').DataTable({
-        scrollY: '650px',
-        scrollCollapse: true,
-        responsive: true,
+  // Initialize DataTable
+var roomsTable = $('#roomsTable').DataTable({
+        scrollY: '50vh',
+        scrollX: false,        // No horizontal scroll
+        scrollCollapse: true,  // Table shrinks if fewer rows
+        responsive: true,      // Optional: makes table responsive
         paging: true,
         ordering: true,
         pageLength: 10,
         lengthMenu: [5, 10, 25, 50, 100],
         columnDefs: [
-            { orderable: false, targets: -1 } // Make last column unsortable (e.g., action buttons)
+            { orderable: false, targets: -1 } // Last column unsortable
         ],
         dom: '<"row mb-2"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>' +
              '<"row"<"col-sm-12"tr>>' +
@@ -177,111 +169,167 @@ $(document).ready(function () {
     });
 
 
-    // Helper function to show alerts
-    function showAlert(type, message) {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
-        alertDiv.style.zIndex = '1050';
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        document.body.appendChild(alertDiv);
-        setTimeout(() => alertDiv.remove(), 3000);
+
+    function showAlert(message, type = 'success') {
+        const validTypes = ['success', 'error', 'warning', 'info', 'question'];
+        if (!validTypes.includes(type)) type = 'info';
+
+        Swal.fire({
+            icon: type,
+            title: type === 'success' ? 'Success!' :
+                   type === 'error' ? 'Error!' :
+                   type === 'warning' ? 'Warning!' : 'Notice',
+            text: message,
+            timer: 3000,
+            showConfirmButton: false,
+            toast: true,
+            position: 'top-end'
+        });
     }
 
-    // Add Room Form Submission
-    $('#addRoomForm').on('submit', function(e) {
+    // Add Room
+    $('#addRoomForm').on('submit', function(e){
         e.preventDefault();
-        const baseUrl = $('meta[name="base-url"]').attr('content');
         $.ajax({
-            url: baseUrl + '/rooms/processes/add_room.php',
+            url: './rooms/processes/add_room.php',
             type: 'POST',
             data: $(this).serialize(),
             dataType: 'json',
-            success: function(response) {
-                console.log('Response:', response);
-                if (response.status === 'success') {
+            success: function(response){
+                if(response.status === 'success'){
                     $('#addRoomModal').modal('hide');
-                    showAlert('success', 'Room added successfully');
-                    setTimeout(() => location.reload(), 1000);
+                    showAlert(response.message, 'success');
+                    // Add new row dynamically
+                    var newRow = roomsTable.row.add([
+                        response.data.room_number,
+                        response.data.capacity,
+                        `<button class="btn btn-sm btn-primary edit-room" data-id="${response.data.room_id}">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger delete-room" data-id="${response.data.room_id}">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>`
+                    ]).draw(false).node();
+                    $(newRow).attr('id', 'room-' + response.data.room_id);
+                    $('#addRoomForm')[0].reset();
                 } else {
-                    showAlert('danger', response.message || 'An error occurred while adding the room.');
+                    showAlert(response.message || 'An unknown error occurred', 'error');
                 }
             },
-            error: function(xhr, status, error) {
-                console.error('Error:', xhr.responseText);
-                showAlert('danger', 'An error occurred while adding the room. Please try again.');
+            error: function(xhr){
+                let msg = 'An error occurred. Please try again.';
+                try {
+                    const res = JSON.parse(xhr.responseText);
+                    if(res.message) msg = res.message;
+                } catch(e){
+                    console.error('Could not parse JSON response', e, xhr.responseText);
+                }
+                showAlert(msg, 'error');
             }
         });
     });
 
-    // Edit Room Button Click
-    $('.edit-room').on('click', function() {
-        const baseUrl = $('meta[name="base-url"]').attr('content');
+    // Edit Room (delegate click)
+    $('#roomsTable').on('click', '.edit-room', function(){
         var roomId = $(this).data('id');
-        $.get(baseUrl + '/rooms/processes/get_room.php', {id: roomId}, function(response) {
-            if (response.status === 'success') {
-                var room = response.data;
-                $('#edit_room_id').val(room.room_id);
-                $('#edit_room_number').val(room.room_number);
-                $('#edit_capacity').val(room.capacity);
+        $.getJSON('./rooms/processes/get_room.php', {id: roomId}, function(response){
+            if(response.status === 'success'){
+                $('#edit_room_id').val(response.data.room_id);
+                $('#edit_room_number').val(response.data.room_number);
+                $('#edit_capacity').val(response.data.capacity);
                 $('#editRoomModal').modal('show');
             } else {
-                showAlert('danger', response.message || 'Failed to load room details');
+                showAlert(response.message || 'Failed to fetch room details', 'error');
             }
+        }).fail(function(xhr){
+            let msg = 'Failed to fetch room details';
+            try {
+                const res = JSON.parse(xhr.responseText);
+                if(res.message) msg = res.message;
+            } catch(e){ console.error(e); }
+            showAlert(msg, 'error');
         });
     });
 
-    // Edit Room Form Submission
-    $('#editRoomForm').on('submit', function(e) {
+    // Update Room
+    $('#editRoomForm').on('submit', function(e){
         e.preventDefault();
-        const baseUrl = $('meta[name="base-url"]').attr('content');
         $.ajax({
-            url: baseUrl + '/rooms/processes/edit_room.php',
+            url: './rooms/processes/edit_room.php',
             type: 'POST',
             data: $(this).serialize(),
             dataType: 'json',
-            success: function(response) {
-                if (response.status === 'success') {
+            success: function(response){
+                if(response.status === 'success'){
                     $('#editRoomModal').modal('hide');
-                    showAlert('success', 'Room updated successfully');
-                    setTimeout(() => location.reload(), 1000);
+                    showAlert(response.message, 'success');
+                    var id = $('#edit_room_id').val();
+                    var row = roomsTable.row('#room-' + id);
+                    row.data([
+                        $('#edit_room_number').val(),
+                        $('#edit_capacity').val(),
+                        `<button class="btn btn-sm btn-primary edit-room" data-id="${id}">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger delete-room" data-id="${id}">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>`
+                    ]).draw(false);
                 } else {
-                    showAlert('danger', response.message || 'An error occurred while updating the room.');
+                    showAlert(response.message || 'An unknown error occurred', 'error');
                 }
             },
-            error: function(xhr, status, error) {
-                console.error('Error:', xhr.responseText);
-                showAlert('danger', 'An error occurred while updating the room. Please try again.');
+            error: function(xhr){
+                let msg = 'An error occurred. Please try again.';
+                try {
+                    const res = JSON.parse(xhr.responseText);
+                    if(res.message) msg = res.message;
+                } catch(e){ console.error('Could not parse JSON', e); }
+                showAlert(msg, 'error');
             }
         });
     });
 
-    // Delete Room Button Click
-    $('.delete-room').on('click', function() {
-        if (confirm('Are you sure you want to delete this room?')) {
-            const baseUrl = $('meta[name="base-url"]').attr('content');
-            var roomId = $(this).data('id');
+   // Delete Room with SweetAlert confirmation
+$('#roomsTable').on('click', '.delete-room', function(){
+    var roomId = $(this).data('id');
+
+    Swal.fire({
+        title: 'Are you sure?',
+        text: "This will permanently delete the room!",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
             $.ajax({
-                url: baseUrl + '/rooms/processes/delete_room.php',
+                url: './rooms/processes/delete_room.php',
                 type: 'POST',
                 data: {id: roomId},
                 dataType: 'json',
-                success: function(response) {
-                    if (response.status === 'success') {
-                        showAlert('success', 'Room deleted successfully');
-                        setTimeout(() => location.reload(), 1000);
+                success: function(response){
+                    if(response.status === 'success'){
+                        showAlert(response.message, 'success');
+                        roomsTable.row('#room-' + roomId).remove().draw(false);
                     } else {
-                        showAlert('danger', response.message || 'An error occurred while deleting the room.');
+                        showAlert(response.message || 'Failed to delete room', 'error');
                     }
                 },
-                error: function(xhr, status, error) {
-                    console.error('Error:', xhr.responseText);
-                    showAlert('danger', 'An error occurred while deleting the room. Please try again.');
+                error: function(xhr){
+                    let msg = 'An error occurred. Please try again.';
+                    try {
+                        const res = JSON.parse(xhr.responseText);
+                        if(res.message) msg = res.message;
+                    } catch(e){ console.error(e); }
+                    showAlert(msg, 'error');
                 }
             });
         }
     });
 });
+});
 </script>
+

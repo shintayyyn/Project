@@ -21,7 +21,7 @@ $student_result = $stmt->get_result();
 $student = $student_result->fetch_assoc();
 $full_name = $student['s_fname'] . ' ' . $student['s_lname'];
 
-// Fetch approved devices for this student or for classmates if Mayor
+// Fetch approved devices for this student or for classmates if Mayor, but exclude logged-in student
 if ($student['is_Mayor']) {
     $device_query = "
         SELECT ad.id, ad.student_id, ad.device_name, ad.device_type, ad.mac_address, ad.status, ad.created_at,
@@ -29,18 +29,20 @@ if ($student['is_Mayor']) {
         FROM approved_devices ad
         JOIN students s ON ad.student_id = s.s_id
         WHERE ad.student_id IN (
-            SELECT s_id FROM students_sections WHERE section_id = ?
+            SELECT s_id 
+            FROM students_sections 
+            WHERE section_id = ? AND s_id != ?
         )
         ORDER BY ad.created_at DESC
     ";
     $stmt2 = $conn->prepare($device_query);
-    $stmt2->bind_param("i", $student['section_id']);
+    $stmt2->bind_param("ii", $student['section_id'], $s_id);
 } else {
     $device_query = "
         SELECT id, student_id, device_name, device_type, mac_address, status, created_at,
                CONCAT(s_fname, ' ', s_lname) AS student_name
         FROM approved_devices
-        WHERE student_id = ?
+        WHERE student_id = ?  -- single student only
         ORDER BY created_at DESC
     ";
     $stmt2 = $conn->prepare($device_query);
@@ -50,7 +52,7 @@ if ($student['is_Mayor']) {
 $stmt2->execute();
 $devices = $stmt2->get_result();
 
-// Fetch classmates if student is Mayor
+// Fetch classmates if student is Mayor, already excludes logged-in student
 $classmates = [];
 if ($student['is_Mayor']) {
     $class_query = "
@@ -65,9 +67,9 @@ if ($student['is_Mayor']) {
 }
 ?>
 
+
 <!-- DataTables + Responsive CSS -->
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-<link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
 
 <!-- jQuery + DataTables JS -->
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -185,6 +187,7 @@ if ($student['is_Mayor']) {
 
 </style>
 <div class="container-fluid py-4">
+    <div class="alert-container" id="alertContainer"></div>
     <div class="row mb-4">
             <div class="col-12">
                 <div class="d-sm-flex align-items-center justify-content-between">
@@ -192,10 +195,13 @@ if ($student['is_Mayor']) {
                         <i class="bi bi-phone me-2"></i> Approve Devices
                     </h1>
                     <div class="d-flex align-items-center">
-                        <div class="bg-white shadow-sm rounded-pill px-4 py-2 text-muted small">
-                            <i class="bi bi-clock-history me-1"></i>
-                            Last Updated: <span id="last-updated">Just now</span>
-                        </div>
+                        <div class="bg-white shadow-sm rounded-pill px-4 py-2 text-muted small d-flex align-items-center">
+    <i class="bi bi-clock-history me-1"></i>
+    Last Updated: <span id="last-updated-<?= $device['id'] ?>" class="ms-1 fw-semibold text-dark">
+        <?= htmlspecialchars($_SESSION['last_updated']); ?>
+    </span>
+</div>
+
                     </div>
                 </div>
             </div>
@@ -222,7 +228,9 @@ if ($student['is_Mayor']) {
                <tbody>
                    <?php while($row = $devices->fetch_assoc()): ?>
                    <tr>
-                       <td><?= htmlspecialchars($row['student_id']); ?></td>
+                        <td>
+                        <?= htmlspecialchars($row['student_id']); ?>
+                    </td>
                        <td><?= htmlspecialchars($row['student_name']); ?></td>
                        <td><?= htmlspecialchars($row['device_type']); ?></td>
                        <td><code><?= htmlspecialchars($row['mac_address']); ?></code></td>
@@ -276,56 +284,161 @@ if ($student['is_Mayor']) {
     </form>
   </div>
 </div>
-
 <script>
-$(document).ready(function() {
-    // Initialize DataTable with full responsiveness and horizontal scrolling
+$(document).ready(function () {
+
     var table = $('#devicesTable').DataTable({
-        responsive: {
-            details: {
-                type: 'column',
-                target: 'tr'
-            }
-        },
-        scrollX: true, // enables horizontal scroll if needed
-        columnDefs: [
-            { className: 'dtr-control', targets: 0 } // First column triggers responsive child row
-        ],
-        pageLength: 10,
-        lengthMenu: [5, 10, 25, 50],
-        order: [[6, "desc"]] // Order by Date Added descending
-    });
+    responsive: {
+        details: {
+            type: 'column',
+            target: 0
+        }
+    },
+    columnDefs: [
+        { className: 'dtr-control custom-plus', targets: 0 }
+    ],
+    scrollX: false,            // no horizontal scroll
+        scrollY: '50vh',           // vertical scroll height
+        responsive: true,
+        ordering: true,            // allow sorting
+    scrollCollapse: true,
+    paging: true,
+    searching: true,
+    info: true,
+    autoWidth: false
+});
 
-    var deviceId;
+  $('#devicesTable_length').addClass('mb-2 mt-2');
+    $('#devicesTable_filter').addClass('mb-2');
 
-    $('.edit-device-btn').click(function() {
-        deviceId = $(this).data('id');
+    var deviceId = null;
+
+    // ✅ FIX: iOS requires touchstart + dynamic binding due to DataTables modifying DOM
+    $(document).on("click touchstart", ".edit-device-btn", function (e) {
+        e.preventDefault();
+        deviceId = $(this).data("id");
         $('#edit_device_id').val(deviceId);
-        $('#edit_device_name').text($(this).data('name'));
+        $('#edit_device_name').text($(this).data("name"));
     });
 
+    // ✅ Buttons inside Bootstrap modal (iOS Safari fix)
+    $(document).on("click touchstart", "#approveBtn", function (e) {
+        e.preventDefault();
+        updateStatus("approved");
+    });
+
+    $(document).on("click touchstart", "#pendingBtn", function (e) {
+        e.preventDefault();
+        updateStatus("pending");
+    });
+
+    $(document).on("click touchstart", "#rejectBtn", function (e) {
+        e.preventDefault();
+        updateStatus("rejected");
+    });
+
+
+    // ✅ Main function
     function updateStatus(newStatus) {
-        $.post('approve_devices/update_device_status.php', {id: deviceId, status: newStatus}, function(response){
-            if(response.success){
-                $('#editDeviceModal').modal('hide');
-                var badgeHtml;
-                if(newStatus === 'approved'){
-                    badgeHtml = '<span class="badge bg-success">Approved</span>';
-                } else if(newStatus === 'pending'){
-                    badgeHtml = '<span class="badge bg-warning text-dark">Pending</span>';
-                } else {
-                    badgeHtml = '<span class="badge bg-danger">Rejected</span>';
+
+        if (!deviceId) {
+            console.log("❌ deviceId missing — iOS prevented click event");
+            showAlert("error", "Device ID missing");
+            return;
+        }
+
+        $.ajax({
+            url: "approve_devices/update_device_status.php",
+            method: "POST",
+            data: {
+                id: deviceId,
+                status: newStatus,
+                _nocache: Date.now()
+            },
+            cache: false,
+            timeout: 10000,
+            dataType: "json",
+            headers: {
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache"
+            },
+
+            success: function (response) {
+                console.log("✅ SERVER RESPONSE:", response);
+
+                if (!response.success) {
+                    showAlert("error", response.message);
+                    return;
                 }
-                $('#status-' + deviceId).html(badgeHtml);
-            } else {
-                alert('Failed to update status.');
+
+                // ✅ Close modal
+                $('#editDeviceModal').modal('hide');
+
+                // ✅ Badge HTML
+                let badge = {
+                    approved: '<span class="badge bg-success">Approved</span>',
+                    pending: '<span class="badge bg-warning text-dark">Pending</span>',
+                    rejected: '<span class="badge bg-danger">Rejected</span>'
+                }[newStatus];
+
+                // ✅ Update badge in table cell
+                $('#status-' + deviceId).html(badge);
+
+                // ✅ Update “Last Updated”
+                if (response.updated_at) {
+                    $('#last-updated-' + deviceId).text(response.updated_at);
+                }
+
+                // ✅ FIX: DataTables refresh for both parent + child rows
+                refreshDataTableRow(deviceId, badge);
+
+                showAlert("success", response.message);
+            },
+
+            error: function (xhr) {
+                console.log("❌ AJAX ERROR:", xhr.responseText);
+                showAlert("error", "Server error occurred.");
             }
-        }, 'json');
+        });
     }
 
-    $('#approveBtn').click(function(){ updateStatus('approved'); });
-    $('#pendingBtn').click(function(){ updateStatus('pending'); });
-    $('#rejectBtn').click(function(){ updateStatus('rejected'); });
+
+    // ✅ DataTables row refresh that works on ALL screen sizes
+    function refreshDataTableRow(deviceId, badge) {
+
+        var table = $('#devicesTable').DataTable();
+
+        // Get actual row
+        let cell = $('#status-' + deviceId);
+        let tr = cell.closest('tr');
+
+        // If child row is open (mobile)
+        if (tr.hasClass("child")) {
+            tr = tr.prev(); // get parent row
+        }
+
+        // ✅ Redraw row properly
+        table.row(tr).invalidate().draw(false);
+
+        // ✅ Force update immediately inside visible cell
+        cell.html(badge);
+    }
+
+
+    // ✅ SweetAlert Toast
+    function showAlert(type, message) {
+        Swal.fire({
+            icon: type,
+            title: type.charAt(0).toUpperCase() + type.slice(1),
+            text: message,
+            timer: 3000,
+            showConfirmButton: false,
+            toast: true,
+            position: "top-end"
+        });
+    }
+
 });
 </script>
+
 

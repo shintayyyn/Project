@@ -1,4 +1,10 @@
 <?php
+header('Content-Type: application/json');
+ini_set('display_errors', 1); // or 0 in production
+error_reporting(E_ALL);
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../../../includes/db.php';
 
 header('Content-Type: application/json');
@@ -114,11 +120,17 @@ try {
     }
 
 } catch (Exception $e) {
-    if ($conn && $conn->inTransaction()) {
+    if ($conn && $conn->connect_errno == 0) {
         $conn->rollback();
     }
-    echo json_encode([
-        'success' => false,
-        'message' => $e->getMessage()
-    ]);
+    // ... After successfully assigning student
+$section_name = $section_data['section_code'];
+
+echo json_encode([
+    'success' => true,
+    'message' => 'Student assigned successfully',
+    'section_id' => $section_id,
+    'section_name' => $section_name
+]);
+
 }

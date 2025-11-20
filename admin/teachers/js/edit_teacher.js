@@ -90,46 +90,49 @@ $(document).ready(function() {
 if (response.success) {
     // ✅ Update row inline
     const $row = $(`#teachersTable tr[data-teacher-id="${response.data.t_id}"]`);
-    if ($row.length) {
-        table.row($row).data([
-            '', // control
-            response.data.idcode || '-',
-            `
-            <div class="d-flex align-items-center gap-2">
-                ${response.data.t_avatar
-                    ? `<img src="/uploads/teachers/${response.data.t_avatar}" 
-                            alt="Avatar" class="rounded-circle"
-                            style="width:35px; height:35px; object-fit:cover;">`
-                    : `<div class="profile-avatar" style="width:35px; height:35px; font-size:0.9rem;">
-                           ${getTeacherInitials(response.data)}
-                       </div>`}
-                ${formatTeacherFullName(response.data)}
-            </div>
-            `,
-            response.data.degree_code || '-',
-            `<span class="badge bg-${response.data.t_status.toLowerCase() === 'active' ? 'success' : 'danger'}">
-                ${response.data.t_status.charAt(0).toUpperCase() + response.data.t_status.slice(1)}
-            </span>`,
-            response.data.t_email || '',
-            response.data.t_gender || '',
-            formatDateForDisplay(response.data.t_bdate),
-            response.data.t_cnum || ''
-        ]).draw(false);
+   if ($row.length) {
+    const degreeBadge = `<span class="badge rounded-pill bg-warning text-dark">${response.data.degree_code || '-'}</span>`;
 
-        // ✅ Update data attributes (for row click use)
-        $row.attr({
-            'data-teacher-id': response.data.t_id,
-            'data-teacher-idcode': response.data.idcode,
-            'data-teacher-name': formatTeacherFullName(response.data),
-            'data-teacher-email': response.data.t_email,
-            'data-teacher-dept': response.data.degree_code || '-',
-            'data-teacher-status': response.data.t_status,
-            'data-teacher-avatar': response.data.t_avatar,
-            'data-teacher-gender': response.data.t_gender,
-            'data-teacher-bdate': formatDateForDisplay(response.data.t_bdate),
-            'data-teacher-cnum': response.data.t_cnum
-        });
-    }
+    table.row($row).data([
+        '', // control
+        response.data.idcode || '-',
+        `
+        <div class="d-flex align-items-center gap-2">
+            ${response.data.t_avatar
+                ? `<img src="/uploads/teachers/${response.data.t_avatar}" 
+                        alt="Avatar" class="rounded-circle"
+                        style="width:35px; height:35px; object-fit:cover;">`
+                : `<div class="profile-avatar" style="width:35px; height:35px; font-size:0.9rem;">
+                       ${getTeacherInitials(response.data)}
+                   </div>`}
+            ${formatTeacherFullName(response.data)}
+        </div>
+        `,
+        degreeBadge,
+        `<span class="badge bg-${response.data.t_status.toLowerCase() === 'active' ? 'success' : 'danger'}">
+            ${response.data.t_status.charAt(0).toUpperCase() + response.data.t_status.slice(1)}
+        </span>`,
+        response.data.t_email || '',
+        response.data.t_gender || '',
+        formatDateForDisplay(response.data.t_bdate),
+        response.data.t_cnum || ''
+    ]).draw(false);
+
+    // ✅ Update data attributes (for row click use)
+    $row.attr({
+        'data-teacher-id': response.data.t_id,
+        'data-teacher-idcode': response.data.idcode,
+        'data-teacher-name': formatTeacherFullName(response.data),
+        'data-teacher-email': response.data.t_email,
+        'data-teacher-dept': response.data.degree_code || '-',
+        'data-teacher-status': response.data.t_status,
+        'data-teacher-avatar': response.data.t_avatar,
+        'data-teacher-gender': response.data.t_gender,
+        'data-teacher-bdate': formatDateForDisplay(response.data.t_bdate),
+        'data-teacher-cnum': response.data.t_cnum
+    });
+}
+
 
     // ✅ ALSO refresh teacher details card if the same teacher is selected
     const $activeRow = $('#teachersTable tbody tr.active-row');
@@ -159,18 +162,7 @@ if (response.success) {
             <p class="text-muted mb-1"><strong>Birthdate:</strong> ${formatDateForDisplay(response.data.t_bdate)}</p>
             <p class="text-muted mb-1"><strong>Contact:</strong> ${response.data.t_cnum || '-'}</p>
             
-            <div class="action-buttons d-flex justify-content-center gap-2 mt-3">
-                <button class="btn btn-sm btn-primary btn-edit-teacher" 
-                        data-bs-toggle="modal" 
-                        data-bs-target="#editTeacherModal" 
-                        data-teacher-id="${response.data.t_id}">
-                    <i class="bi bi-pencil-square me-1"></i>Edit
-                </button>
-                <button class="btn btn-sm btn-danger btn-delete-teacher" 
-                        data-teacher-id="${response.data.t_id}">
-                    <i class="bi bi-trash me-1"></i>Delete
-                </button>
-            </div>
+          
         `);
     }
 

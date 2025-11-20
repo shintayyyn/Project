@@ -32,6 +32,32 @@ if ((int)$teacher['is_dean'] === 1) {
     $_SESSION['user_type'] = 'dean';
 }
 
+// Default department code
+$departmentCode = 'DEAN';
+
+// Get active term ID
+$active_term_id = null;
+$term_query = "SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1";
+if ($term_result = $conn->query($term_query)) {
+    if ($term_row = $term_result->fetch_assoc()) {
+        $active_term_id = (int)$term_row['term_id'];
+    }
+}
+
+// Fetch the degree (department) this dean is in charge of for the active term
+if ($active_term_id) {
+    $degree_query = "SELECT degree_code FROM degrees WHERE dean_id = ? AND term_id = ? LIMIT 1";
+    if ($degree_stmt = $conn->prepare($degree_query)) {
+        $degree_stmt->bind_param("ii", $t_id, $active_term_id);
+        $degree_stmt->execute();
+        $degree_result = $degree_stmt->get_result();
+        if ($degree = $degree_result->fetch_assoc()) {
+            $departmentCode = strtoupper($degree['degree_code']);
+        }
+        $degree_stmt->close();
+    }
+}
+
 // For display purposes
 $user_type = ucfirst($_SESSION['user_type']);
 
@@ -71,6 +97,14 @@ switch ($page) {
         $content = 'schedules/index.php';
         $title = 'Manage Schedules';
         break;
+      case 'upload_data':
+        $content = 'upload_data/index.php';
+        $title = 'Upload Data';
+        break;
+    case 'reports':
+        $content = 'reports/index.php';
+        $title = 'Attendance Reports';
+        break;
     default:
         $content = 'dashboard/index.php';
         $title = 'Dashboard';
@@ -83,15 +117,18 @@ switch ($page) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Departmental Dean- <?php echo $title; ?></title>
-    
-    <!-- Bootstrap CSS -->
+      <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <!-- DataTables CSS -->
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/responsive/2.2.9/css/responsive.bootstrap5.min.css">
-    
+     <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;700&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+      <!-- Font Awesome CDN (version 5 or 6) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" integrity="sha512-..." crossorigin="anonymous" referrerpolicy="no-referrer" />
+
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <!-- Bootstrap JS -->
@@ -101,8 +138,8 @@ switch ($page) {
     <script type="text/javascript" src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/responsive/2.2.9/js/dataTables.responsive.min.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/responsive/2.2.9/js/responsive.bootstrap5.min.js"></script>
-    <meta name="base-url" content="/Project/dean">
-     <style>
+    <meta name="base-url" content="../dean">
+<style>
         :root {
     --primary: #033A70;
     --secondary: #033A70;
@@ -114,6 +151,9 @@ switch ($page) {
     --card-border-radius: 0.75rem;
     --transition-speed: 0.3s;
 }
+*{
+            font-family: 'Baloo 2', 'Nunito', 'Poppins', sans-serif;
+        }
         body{
             overflow-x: hidden;
             overflow-y: visible;
@@ -134,12 +174,35 @@ switch ($page) {
             overflow-y: auto;
         }
         
-        .sidebar-header {
-            padding: 1.5rem 1.5rem 2rem;
-            text-align: center;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            margin-bottom: 0.5rem;
-        }
+         /* Sidebar header centered */
+.sidebar-header {
+    display: flex;
+    flex-direction: column; /* Stack items vertically */
+    align-items: center;    /* Center horizontally */
+    justify-content: center; /* Center vertically */
+    text-align: center;     /* Ensure text inside is centered */
+}
+
+/* Avatar circle */
+.profile-image2 {
+    width: 85px;
+    height: 85px;
+    border: 4px solid white;
+    background: linear-gradient(145deg, var(--secondary) 0%, var(--primary) 100%);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.8rem;
+    font-weight: 600;
+    margin-bottom: 10px; /* Space below avatar */
+}
+
+
+        
+      
 
         .sidebar-header h3 {
             font-size: 1.5rem;
@@ -373,7 +436,7 @@ switch ($page) {
 }
 
 
-        .btn {
+        .btn-primary {
             border-radius: 8px;
             padding: 0.5rem 1.25rem;
             font-weight: 500;
@@ -393,7 +456,7 @@ switch ($page) {
             box-shadow: 0 4px 8px rgba(61, 82, 160, 0.2);
         }
 
-        .btn::after {
+        .btn-primary::after {
             content: '';
             position: absolute;
             top: 50%;
@@ -406,7 +469,7 @@ switch ($page) {
             transition: width 0.6s, height 0.6s;
         }
 
-        .btn:active::after {
+        .btn-primary:active::after {
             width: 200px;
             height: 200px;
             opacity: 0;
@@ -544,18 +607,49 @@ switch ($page) {
             <!-- Sidebar -->
             <div class="sidebar">
                 <div class="sidebar-header">
-                    <h3>Departmental Dean Panel</h3>
-                    <span class="dean-badge">Administrator</span>
-                     <!-- ✅ Switch Panel only visible if is_dean = 1 -->
-                    <?php if (!empty($teacher['is_dean']) && (int)$teacher['is_dean'] === 1): ?>
-                        <div class="mt-2 justify-content-center">
-                            <button id="switchDashboardBtn" class="btn bg-warning w-auto">
-                                <i class="fa-solid fa-repeat"></i> Switch Panel
-                            </button>
-                        </div>
-                    <?php endif; ?>
+                    <h3>Dean Panel</h3>
+                  <span class="m-2 badge bg-success rounded-pill">Dean</span>
+                   <?php
+            $current_term = $conn->query("SELECT ay.year_start, ay.year_end, t.semester 
+                FROM academic_terms t 
+                JOIN academic_years ay ON t.ay_id = ay.ay_id 
+                WHERE t.is_active = 1
+                ORDER BY t.term_id DESC LIMIT 1")->fetch_assoc();
+            if ($current_term) {
+               echo '<span class="badge rounded-pill bg-warning text-black">' 
+                . htmlspecialchars($current_term['year_start']) . ' - ' 
+                . htmlspecialchars($current_term['year_end']) . ' | ' 
+                . htmlspecialchars($current_term['semester']) . 
+            '</span>';
+
+            } else {
+                echo "No academic term set.";
+            }
+            ?>
+
+            
                 </div>
-                
+                <script>
+                    document.addEventListener('DOMContentLoaded', () => {
+                        const dropdowns = document.querySelectorAll('.dropdown-toggle');
+                        dropdowns.forEach(toggle => {
+                            const dropdown = toggle.nextElementSibling;
+                            toggle.addEventListener('click', () => {
+                                const isOpen = dropdown.style.display === 'flex';
+                                dropdown.style.display = isOpen ? 'none' : 'flex';
+                                toggle.classList.toggle('active');
+                            });
+                        });
+                    });
+                </script>
+ <?php if (!empty($teacher['is_dean']) && (int)$teacher['is_dean'] === 1): ?>
+        <div class="mt-2 justify-content-center text-center">
+            <button id="switchDashboardBtn" class="btn btn-warning w-auto btn-sm" data-target="teacher">
+                <i class="fa-solid fa-repeat"></i> Teacher Panel
+            </button>
+        </div>
+    <?php endif; ?>
+                <!-- Main Section -->
                 <div class="nav-section">
                     <div class="nav-section-label">Main</div>
                     <a href="?page=dashboard" class="<?php echo $page === 'dashboard' ? 'active' : ''; ?>">
@@ -564,20 +658,37 @@ switch ($page) {
                     </a>
                 </div>
 
+                <!-- Manage Users Section -->
+                <?php $isUserPage = in_array($page, ['students', 'teachers', 'parents']); ?>
                 <div class="nav-section">
-                    <div class="nav-section-label">Management</div>
-                    <a href="?page=students" class="<?php echo $page === 'students' ? 'active' : ''; ?>">
-                        <i class="bi bi-people"></i>
-                        <span>Students</span>
-                    </a>
-                    <a href="?page=teachers" class="<?php echo $page === 'teachers' ? 'active' : ''; ?>">
-                        <i class="bi bi-person-workspace"></i>
-                        <span>Teachers</span>
-                    </a>
-                    <a href="?page=parents" class="<?php echo $page === 'parents' ? 'active' : ''; ?>">
-                        <i class="bi bi-person"></i>
-                        <span>Parents</span>
-                    </a>
+                    <div class="nav-section-label">Manage Users</div>
+                    <div class="dropdown-toggle <?php echo $isUserPage ? 'active' : ''; ?>">
+                        <div class="d-flex align-items-center manageusers">
+                            <i class="bi bi-people-fill"></i>
+                            <span class="ms-2">Manage Users</span>
+                        </div>
+                        <i class="bi bi-chevron-right arrow"></i>
+                    </div>
+
+                    <div class="dropdown-container" style="display: <?php echo $isUserPage ? 'flex' : 'none'; ?>;">
+                        <a href="?page=students" class="<?php echo $page === 'students' ? 'active' : ''; ?>">
+                            <i class="bi bi-people"></i>
+                            <span>Students</span>
+                        </a>
+                        <a href="?page=teachers" class="<?php echo $page === 'teachers' ? 'active' : ''; ?>">
+                            <i class="bi bi-person-workspace"></i>
+                            <span>Teachers</span>
+                        </a>
+                        <a href="?page=parents" class="<?php echo $page === 'parents' ? 'active' : ''; ?>">
+                            <i class="bi bi-person"></i>
+                            <span>Parents</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Other Management Section -->
+                <div class="nav-section">
+                    <div class="nav-section-label">Other Management</div>
                     <a href="?page=sections" class="<?php echo $page === 'sections' ? 'active' : ''; ?>">
                         <i class="bi bi-collection"></i>
                         <span>Sections</span>
@@ -594,9 +705,26 @@ switch ($page) {
                         <i class="bi bi-calendar3"></i>
                         <span>Schedules</span>
                     </a>
-                    
+                    <a href="?page=upload_data" class="<?php echo $page === 'upload_data' ? 'active' : ''; ?>">
+                        <i class="bi bi-upload"></i>
+                        <span>Upload Data</span>
+                    </a>
+                     <!-- <a href="?page=archives" class="<?php echo $page === 'archive' ? 'active' : ''; ?>">
+                        <i class="bi bi-upload"></i>
+                        <span>Archives</span>
+                    </a> -->
                 </div>
 
+                <!-- Other Management Section -->
+                <div class="nav-section">
+                    <div class="nav-section-label">Attendance Reports</div>
+                    <a href="?page=reports" class="<?php echo $page === 'reports' ? 'active' : ''; ?>">
+                         <i class="bi bi-file-earmark-text me-2"></i>
+                        <span>Reports</span>
+                    </a>
+                </div>
+
+                <!-- Footer -->
                 <div class="sidebar-footer">
                     <a href="logout.php">
                         <i class="bi bi-box-arrow-right"></i>
@@ -611,7 +739,7 @@ switch ($page) {
                 if (file_exists($content)) {
                     include $content;
                 } else {
-                    echo '<div class="alert alert-danger">Page not found</div>';
+                    echo '<div class="showAlert showAlert-danger">Page not found</div>';
                 }
                 ?>
             </div>
@@ -619,6 +747,52 @@ switch ($page) {
     </div>
 
     <script>
+            function showAlert(type, message) {
+    // Ensure type is lowercase string
+    type = (type || 'info').toLowerCase();
+
+    let icon;
+    let title;
+
+    switch(type) {
+        case 'success':
+            icon = 'success';
+            title = 'Success!';
+            break;
+        case 'error':
+        case 'danger':
+            icon = 'error';
+            title = 'Error!';
+            break;
+        case 'info':
+            icon = 'info';
+            title = 'Notice';
+            break;
+        case 'warning':
+            icon = 'warning';
+            title = 'Warning!';
+            break;
+        default:
+            icon = 'info';
+            title = 'Notice';
+    }
+
+    Swal.fire({
+        icon: icon,
+        title: title,
+        text: message || '',
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 5000,
+        timerProgressBar: true,
+        didOpen: (toast) => {
+            toast.addEventListener('mouseenter', Swal.stopTimer);
+            toast.addEventListener('mouseleave', Swal.resumeTimer);
+        }
+    });
+}
+
         document.addEventListener('DOMContentLoaded', function() {
             // Add loading state to buttons
             document.querySelectorAll('.btn').forEach(btn => {
@@ -765,5 +939,12 @@ switch ($page) {
             // ...rest of your DOMContentLoaded code...
         });
     </script>
+
+    <!-- SweetAlert2 CSS -->
+<link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+
+<!-- SweetAlert2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+
 </body>
 </html>

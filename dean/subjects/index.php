@@ -1,116 +1,317 @@
 <?php
 require_once __DIR__ . '/../../includes/db.php';
 
-// Fetch all subjects
-$subjects_query = "SELECT s.*, GROUP_CONCAT(CONCAT(t.t_fname, ' ', t.t_lname) SEPARATOR ', ') as teachers 
-                  FROM subjects s 
-                  LEFT JOIN subjects_teachers st ON s.subject_id = st.subject_id 
-                  LEFT JOIN teachers t ON st.t_id = t.t_id 
-                  GROUP BY s.subject_id 
-                  ORDER BY s.subject_code";
-$subjects_result = $conn->query($subjects_query);
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
-// Fetch all teachers for the dropdown
-$teachers_query = "SELECT t_id, t_fname, t_lname FROM teachers ORDER BY t_lname, t_fname";
-$teachers_result = $conn->query($teachers_query);
+// ✅ Ensure a dean is logged in
+$dean_id = $_SESSION['t_id'] ?? null;
+if (!$dean_id) {
+    die('<div class="alert alert-danger">Dean not logged in.</div>');
+}
+
+// === Get dean's degree based on teachers table ===
+$dean_query = "
+SELECT t_id, t_department AS degree_id
+FROM teachers
+WHERE t_id = ? AND is_dean = 1
+LIMIT 1
+";
+$stmt = $conn->prepare($dean_query);
+$stmt->bind_param("i", $dean_id);
+$stmt->execute();
+$dean_result = $stmt->get_result();
+$dean_data = $dean_result->fetch_assoc();
+
+if (!$dean_data) {
+    die('<div class="alert alert-danger">Dean not found or not authorized.</div>');
+}
+
+$dean_degree_id = intval($dean_data['degree_id']);
+
+// === Get active term ID dynamically ===
+$term_query = "SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1";
+$term_result = $conn->query($term_query);
+$active_term = $term_result->fetch_assoc();
+$current_term_id = $active_term['term_id'] ?? 0;
+
+// === Fetch subjects for dean's degree only and for active term ===
+$subjects_query = "
+SELECT 
+    s.subject_id,
+    s.subject_code,
+    s.subject_description,
+    s.units,
+    s.term_id,
+    d.degree_code,
+    d.degree_name,
+    at.semester,
+    ay.year_start,
+    ay.year_end,
+    COALESCE(
+        GROUP_CONCAT(
+            CASE WHEN st.term_id = ? THEN CONCAT(t.t_fname, ' ', t.t_lname) END
+            SEPARATOR ', '
+        ),
+        'No teachers assigned'
+    ) AS teachers
+FROM subjects s
+JOIN degrees d ON s.degree_id = d.degree_id
+LEFT JOIN subjects_teachers st ON s.subject_id = st.subject_id
+LEFT JOIN teachers t ON st.t_id = t.t_id
+LEFT JOIN academic_terms at ON s.term_id = at.term_id
+LEFT JOIN academic_years ay ON at.ay_id = ay.ay_id
+WHERE s.degree_id = ?
+GROUP BY s.subject_id
+ORDER BY d.degree_code, s.subject_code
+";
+
+$stmt = $conn->prepare($subjects_query);
+$stmt->bind_param("ii", $current_term_id, $dean_degree_id);
+$stmt->execute();
+$subjects_result = $stmt->get_result();
+
+// === Group subjects by degree (only dean's degree) ===
+$subjects_by_degree = [];
+while ($row = $subjects_result->fetch_assoc()) {
+    $degree_code = $row['degree_code'];
+    if (!isset($subjects_by_degree[$degree_code])) {
+        $subjects_by_degree[$degree_code] = [
+            'degree_name' => $row['degree_name'],
+            'subjects' => []
+        ];
+    }
+
+    // Format term label
+    $semester_label = match((int)$row['semester']) {
+        1 => '1st Semester',
+        2 => '2nd Semester',
+        3 => 'Summer',
+        default => $row['semester']
+    };
+
+    $row['term_label'] = (!empty($row['year_start']) && !empty($row['year_end']))
+        ? "A.Y. {$row['year_start']} - {$row['year_end']} | {$semester_label}"
+        : "<span class='text-muted'>No term assigned</span>";
+
+    $subjects_by_degree[$degree_code]['subjects'][] = $row;
+}
+
+// === Dean's degree info for filter dropdown ===
+$dean_degree_code = null;
+$dean_degree_name = null;
+
+if (!empty($subjects_by_degree)) {
+    foreach ($subjects_by_degree as $degree_code => $degree_data) {
+        $dean_degree_code = $degree_code;
+        $dean_degree_name = $degree_data['degree_name'];
+        break; // only first
+    }
+}
 ?>
 
-<style>
-                .table-responsive {
-                    overflow-x: hidden;
-                }
-                .btn-group {
-                    display: flex;
-                    gap: 2px;
-                    flex-wrap: wrap;
-                }
-                .btn-group .btn {
-                    padding: 0.25rem 0.5rem;
-                    font-size: 0.875rem;
-                    white-space: nowrap;
-                }
-                .table td {
-                    border: none;
-                    max-width: 200px;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
-                }
-            </style>
+
+
+
+
 <!-- Main content -->
-<div class="container-fluid px-4">
-        <div>
-        <h1 class="h2 mb-2">Subjects Management</h1>
-         <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-3">
-                    <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>
-                    <li class="breadcrumb-item active">Subjects</li>
-                </ol>
-            </nav>
-    </div>
-    <button type="button" class="btn btn-primary mb-4" data-bs-toggle="modal" data-bs-target="#addSubjectModal">
-      <i class="bi bi-plus-lg me-2"></i> Add New Subject
+ <div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+  <!-- Left side: Title + Breadcrumb -->
+  <div>
+    <h2 class="mb-1">Subjects Management</h2>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="?page=dashboard">Dashboard</a></li>
+        <li class="breadcrumb-item active">Subjects</li>
+      </ol>
+    </nav>
+  </div>
+
+  <!-- Right side: Button -->
+  <div>
+    <button type="button" class="btn btn-primary w-auto" data-bs-toggle="modal" data-bs-target="#addSubjectModal">
+      <i class="bi bi-plus"></i> Add New Subject
     </button>
+  </div>
+</div>
 
-    <div id="alertMessage" class="alert" style="display: none;"></div>
+    <div id="card-container">
+<!-- Filters Row -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex align-items-center gap-2">
+  <div class="position-relative d-none">
+    <!-- Filter icon inside select -->
+    <span 
+      style="
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--primary);
+        color: var(--tertiary);
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+        width: 38px;
+      ">
+      <i class="fa-solid fa-filter"></i>
+    </span>
 
-    <div class="card">
-        <div class="card-header">
-            <h5 class="mb-0">Subjects List</h5>
-        </div>
-        <div class="card-body">
-           <div class="table-responsive p-3" style="max-height: 100%; overflow-y: auto;">
-                <table id="subjectsTable" class="table table-hover align-middle p-2">
-                    <thead>
-                        <tr>
-                            <th>Subject Code</th>
-                            <th>Description</th>
-                            <th>Units</th>
-                            <th>Assigned Teachers</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="subjectsTableBody">
-                        <?php while ($row = $subjects_result->fetch_assoc()): ?>
-                            <tr>
-                                <td class="px-3"><?php echo htmlspecialchars($row['subject_code']); ?></td>
-                                <td class="px-3"><?php echo htmlspecialchars($row['subject_description']); ?></td>
-                                <td class="px-3"><?php echo htmlspecialchars($row['units']); ?></td>
-                                <td class="px-3"><?php echo htmlspecialchars($row['teachers'] ?? 'No teachers assigned'); ?></td>
-                                <td class="px-3">
-                                    <div class="btn-group" role="group">
-                                        <button type="button" 
-                                                class="btn btn-success btn-sm assign-teacher" 
-                                                data-bs-toggle="modal" 
-                                                data-bs-target="#assignTeacherModal"
-                                                data-id="<?php echo $row['subject_id']; ?>"
-                                                data-code="<?php echo htmlspecialchars($row['subject_code']); ?>">
-                                            Assign
-                                        </button>
-                                        <button type="button" 
-                                                class="btn btn-primary btn-sm edit-subject" 
-                                                data-bs-toggle="modal" 
-                                                data-bs-target="#editSubjectModal"
-                                                data-id="<?php echo $row['subject_id']; ?>"
-                                                data-code="<?php echo htmlspecialchars($row['subject_code']); ?>"
-                                                data-description="<?php echo htmlspecialchars($row['subject_description']); ?>"
-                                                data-units="<?php echo htmlspecialchars($row['units']); ?>">
-                                            Edit
-                                        </button>
-                                        <button type="button" 
-                                                class="btn btn-danger btn-sm delete-subject"
-                                                data-id="<?php echo $row['subject_id']; ?>">
-                                            Delete
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endwhile; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+    <select id="degreeFilter" class="form-select w-auto" 
+            style="
+              border: 1px solid #033A70; 
+              border-radius: 8px; 
+              height: 50px; 
+              padding-left: 46px; /* icon space */
+              padding-top: 0;
+              padding-bottom: 0;
+              display: inline-block;
+              vertical-align: middle;
+              -webkit-appearance: none;
+              -moz-appearance: none;
+              appearance: none;
+            ">
+  
+    <?php if ($dean_degree_code && $dean_degree_name): ?>
+        <option value="<?= htmlspecialchars($dean_degree_code); ?>">
+            <?= htmlspecialchars($dean_degree_code . ' - ' . $dean_degree_name); ?>
+        </option>
+    <?php endif; ?>
+</select>
+  </div>
+</div>
+
+
+ <div class="d-flex align-items-center gap-2">
+  <label for="searchInput" class="form-label mb-0"></label>
+  <div class="position-relative flex-grow-1">
+    <!-- Search icon inside span -->
+    <span 
+      style="
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--primary);
+        color: var(--tertiary);
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+        width: 38px;
+      ">
+      <i class="fa-brands fa-searchengin fa-lg"></i>
+    </span>
+
+    <!-- Input -->
+    <input 
+      type="text" 
+      id="searchInput" 
+      class="form-control ps-5 pe-5" 
+      placeholder="Search..."
+      style="
+        height: 50px; 
+        border: 1px solid #033A70; 
+        border-radius: 8px; 
+        vertical-align: middle;
+      "
+    >
+
+    <!-- Clear button -->
+    <button 
+      type="button" 
+      id="clearSearch" 
+      class="btn-close position-absolute end-0 top-50 translate-middle-y me-2" 
+      aria-label="Clear search" 
+      style="display:none; width: 38px; height: 38px; font-size: 0.8rem;">
+    </button>
+  </div>
+</div>
+
+
+</div>
+
+<!-- No data message (hidden by default) -->
+<div id="noDataMessage" class="alert alert-info text-center d-none">
+    No subjects found for the selected filter/search.
+</div>
+<div id="subjectsWrapper">
+<?php if (!empty($subjects_by_degree)): ?>
+    <?php foreach ($subjects_by_degree as $degree_code => $degree_data): ?>
+        <div class="mb-4 degree-section" data-degree="<?php echo htmlspecialchars($degree_code); ?>">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="bi bi-mortarboard-fill me-2"></i>
+                        <?php echo htmlspecialchars($degree_code . ' - ' . $degree_data['degree_name']); ?>
+                    </h4>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive p-3">
+                        <table class="table table-hover align-middle p-2 subjectsTable">
+                            <thead>
+                                <tr>
+                                    <th>Subject Code</th>
+                                    <th>Description</th>
+                                    <th>Units</th>
+                                    <th>Term Added</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody >
+                                <?php if (!empty($degree_data['subjects'])): ?>
+                                    <?php foreach ($degree_data['subjects'] as $subject): ?>
+                                        <tr>
+                                            <td><?php echo htmlspecialchars($subject['subject_code']); ?></td>
+                                            <td><?php echo htmlspecialchars($subject['subject_description']); ?></td>
+                                            <td><?php echo htmlspecialchars($subject['units']); ?></td>
+                                           <td>
+                                                <?php if (!empty($subject['term_label'])): ?>
+                                                    <?= htmlspecialchars($subject['term_label']); ?>
+                                                <?php else: ?>
+                                                    <span class="text-muted">No Term Assigned</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex gap-2 w-100">
+                                                    <button class="btn btn-sm btn-primary flex-fill edit-subject"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#editSubjectModal"
+                                                        data-id="<?php echo $subject['subject_id']; ?>"
+                                                        data-code="<?php echo htmlspecialchars($subject['subject_code']); ?>"
+                                                        data-description="<?php echo htmlspecialchars($subject['subject_description']); ?>"
+                                                        data-units="<?php echo htmlspecialchars($subject['units']); ?>">
+                                                        <i class="bi bi-pencil-square me-1"></i> Edit
+                                                    </button>
+                                                    <button class="btn btn-sm btn-danger flex-fill delete-subject"
+                                                        data-id="<?php echo $subject['subject_id']; ?>">
+                                                        <i class="bi bi-trash me-1"></i> Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">No subjects available for this degree.</td>
+                                    </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div> <!-- card -->
+        </div> <!-- mb-4 -->
+    <?php endforeach; ?>
+<?php else: ?>
+    <div class="alert alert-info">No degrees or subjects found.</div>
+<?php endif; ?>
+</div>
 </div>
 
 <!-- Add Subject Modal -->
@@ -124,6 +325,34 @@ $teachers_result = $conn->query($teachers_query);
             <form id="addSubjectForm">
                 <input type="hidden" name="action" value="add">
                 <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="degree_code" class="form-label">Department</label>
+                        <select class="form-select js-example-basic-multiple" id="degree_code" name="degree_code[]" disabled>
+                            <?php
+                            // Assuming session is started and teacher ID is stored
+                            $teacher_id = $_SESSION['t_id'] ?? null;
+
+                            if ($teacher_id) {
+                                // Fetch only the teacher's department
+                                $stmt = $conn->prepare("
+                                    SELECT degree_code, degree_name 
+                                    FROM degrees 
+                                    WHERE degree_id = (SELECT t_department FROM teachers WHERE t_id = ?)
+                                ");
+                                $stmt->bind_param("i", $teacher_id);
+                                $stmt->execute();
+                                $result = $stmt->get_result();
+
+                                if ($dept = $result->fetch_assoc()) {
+                                    echo "<option value='" . htmlspecialchars($dept['degree_code']) . "' selected>" .
+                                        htmlspecialchars($dept['degree_name']) .
+                                        "</option>";
+                                }
+                            }
+                            ?>
+                        </select>
+                    </div>
+
                     <div class="mb-3">
                         <label for="subject_code" class="form-label">Subject Code</label>
                         <input type="text" class="form-control" id="subject_code" name="subject_code" required>
@@ -152,7 +381,7 @@ $teachers_result = $conn->query($teachers_query);
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="editSubjectModalLabel">Edit Subject</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
             <form id="editSubjectForm">
                 <input type="hidden" name="action" value="edit">
@@ -172,7 +401,6 @@ $teachers_result = $conn->query($teachers_query);
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" class="btn btn-primary">Save Changes</button>
                 </div>
             </form>
@@ -180,327 +408,370 @@ $teachers_result = $conn->query($teachers_query);
     </div>
 </div>
 
-<!-- Assign Teacher Modal -->
-<div class="modal fade" id="assignTeacherModal" tabindex="-1" aria-labelledby="assignTeacherModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="assignTeacherModalLabel">Manage Subject Teachers</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <!-- Current Teachers Section -->
-                <div class="mb-4">
-                    <h6 class="mb-3">Currently Assigned Teachers</h6>
-                    <div id="currentTeachersList" class="list-group">
-                        <!-- Teachers will be loaded here dynamically -->
-                    </div>
-                </div>
 
-                <!-- Assign New Teacher Section -->
-                <form id="assignTeacherForm">
-                    <input type="hidden" name="action" value="assign_teacher">
-                    <input type="hidden" name="subject_id" id="assign_subject_id">
-                    <input type="hidden" name="subject_code" id="assign_subject_code">
-                    <div class="mb-3">
-                        <label for="teacher_id" class="form-label">Assign New Teacher</label>
-                        <select class="form-select" id="teacher_id" name="teacher_id" required>
-                            <option value="">Select a teacher...</option>
-                            <?php 
-                            $teachers_result->data_seek(0);
-                            while ($teacher = $teachers_result->fetch_assoc()): 
-                            ?>
-                                <option value="<?php echo $teacher['t_id']; ?>">
-                                    <?php echo htmlspecialchars($teacher['t_lname'] . ', ' . $teacher['t_fname']); ?>
-                                </option>
-                            <?php endwhile; ?>
-                        </select>
-                    </div>
-                    <div class="text-end">
-                        <button type="submit" class="btn btn-primary">Assign Teacher</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
+<!-- DataTables CSS and JS for Bootstrap 5 -->
+<!-- Select2 CSS -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css" rel="stylesheet">
+<!-- Select2 Bootstrap 5 Theme -->
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet">
+<!-- jQuery -->
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+<!-- Select2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.min.js"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css" />
+<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
-   $(document).ready(function () {
-    $('table').DataTable({
-        scrollY: '650px',
-        scrollCollapse: true,
-        responsive: true,
+    $(document).ready(function() {
+    $('.js-example-basic-multiple').select2({
+        theme: 'bootstrap-5',
+        placeholder: "Select Department(s)",
+        allowClear: true
+    });
+     $(document).ready(function() {
+    $('.subjectsTable').DataTable({
         paging: true,
+        searching: true,
         ordering: true,
         pageLength: 10,
         lengthMenu: [5, 10, 25, 50, 100],
         columnDefs: [
-            { orderable: false, targets: -1 } // Make last column unsortable (e.g., action buttons)
+            { orderable: false, targets: -1 } // Disable sorting on last column (Actions)
         ],
-        dom: '<"row mb-2"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>' +
-             '<"row"<"col-sm-12"tr>>' +
-             '<"row mt-2"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
         language: {
             lengthMenu: "Show _MENU_ entries",
             search: "Search:",
-            info: "Showing _START_ to _END_ of _TOTAL_ entries"
+            info: "Showing _START_ to _END_ of _TOTAL_ entries",
+            zeroRecords: "No matching records found",
+            emptyTable: "No data available in table"
         }
     });
 });
 
-document.addEventListener('DOMContentLoaded', function() {
-    const alertMessage = document.getElementById('alertMessage');
-    const BASE_URL = '/Project/dean/subjects/';
-    
-    function showAlert(message, type) {
-        alertMessage.className = 'alert alert-' + type;
-        alertMessage.textContent = message;
-        alertMessage.style.display = 'block';
-        setTimeout(() => {
-            alertMessage.style.display = 'none';
-        }, 3000);
-    }
+});
 
-    function attachEventListeners() {
-        // Edit button listeners
-        document.querySelectorAll('.edit-subject').forEach(button => {
-            button.addEventListener('click', function() {
-                const id = this.getAttribute('data-id');
-                const code = this.getAttribute('data-code');
-                const description = this.getAttribute('data-description');
-                const units = this.getAttribute('data-units');
+   document.addEventListener('DOMContentLoaded', function () {
+    const BASE_URL = '/dean/subjects/'; // <-- Adjust path to match your project folder
 
-                document.getElementById('edit_subject_id').value = id;
-                document.getElementById('edit_subject_code').value = code;
-                document.getElementById('edit_subject_description').value = description;
-                document.getElementById('edit_units').value = units;
-            });
-        });
+    // -------------------- Update Subjects Table --------------------
+    function updateSubjectsTable(subjects) {
+        const container = document.getElementById('subjectsWrapper');
+        container.innerHTML = ''; // Clear existing content
 
-        // Delete button listeners
-        document.querySelectorAll('.delete-subject').forEach(button => {
-            button.addEventListener('click', async function() {
-                if (confirm('Are you sure you want to delete this subject?')) {
-                    const subjectId = this.getAttribute('data-id');
-                    try {
-                        const formData = new FormData();
-                        formData.append('delete', subjectId);
-                        
-                        const response = await fetch(BASE_URL + 'subjects_ajax.php', {
-                            method: 'POST',
-                            body: formData
-                        });
-                        const data = await response.json();
-                        
-                        if (data.status === 'success') {
-                            showAlert('Subject deleted successfully', 'success');
-                            updateSubjectsTable(data.subjects);
-                        } else {
-                            showAlert(data.message || 'Error deleting subject', 'danger');
-                        }
-                    } catch (error) {
-                        console.error('Error:', error);
-                        showAlert('An error occurred while deleting the subject', 'danger');
-                    }
-                }
-            });
-        });
-    }
-
-    window.unassignTeacher = async function(subjectId, teacherId) {
-        if (!confirm('Are you sure you want to remove this teacher from the subject?')) {
+        if (!subjects.length) {
+            container.innerHTML = `
+                <div class="alert alert-info text-center">
+                    No degrees or subjects found.
+                </div>
+            `;
             return;
         }
 
-        try {
-            const formData = new FormData();
-            formData.append('action', 'unassign_teacher');
-            formData.append('subject_id', subjectId);
-            formData.append('teacher_id', teacherId);
-
-            const response = await fetch(BASE_URL + 'subjects_ajax.php', {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                showAlert('Teacher removed successfully', 'success');
-                loadCurrentTeachers(subjectId);
-                if (data.subjects) {
-                    updateSubjectsTable(data.subjects);
-                }
-            } else {
-                showAlert(data.message || 'Error removing teacher', 'danger');
+        // Group subjects by degree
+        const grouped = {};
+        subjects.forEach(subject => {
+            if (!grouped[subject.degree_code]) {
+                grouped[subject.degree_code] = {
+                    degree_name: subject.degree_name,
+                    subjects: []
+                };
             }
-        } catch (error) {
-            console.error('Error unassigning teacher:', error);
-            showAlert('Error removing teacher from subject', 'danger');
-        }
-    };
+            grouped[subject.degree_code].subjects.push(subject);
+        });
 
-    async function loadCurrentTeachers(subjectId) {
-        try {
-            const response = await fetch(`${BASE_URL}subjects_ajax.php?action=get_teachers&subject_id=${subjectId}`);
-            const data = await response.json();
-            
-            const teachersList = document.getElementById('currentTeachersList');
-            teachersList.innerHTML = '';
-            
-            if (data.teachers && data.teachers.length > 0) {
-                data.teachers.forEach(teacher => {
-                    const teacherItem = document.createElement('div');
-                    teacherItem.className = 'list-group-item d-flex justify-content-between align-items-center';
-                    teacherItem.innerHTML = `
-                        <span>${teacher.name}</span>
-                        <button type="button" class="btn btn-danger btn-sm" onclick="unassignTeacher(${subjectId}, ${teacher.t_id})">
-                            <i class="bi bi-x-lg"></i> Remove
-                        </button>
-                    `;
-                    teachersList.appendChild(teacherItem);
-                });
-            } else {
-                teachersList.innerHTML = '<div class="list-group-item text-muted">No teachers assigned</div>';
-            }
-        } catch (error) {
-            console.error('Error loading teachers:', error);
-            showAlert('Error loading current teachers', 'danger');
-        }
-    }
+        // Build grouped tables
+        Object.entries(grouped).forEach(([degree_code, group]) => {
+            const degreeSection = document.createElement('div');
+            degreeSection.className = 'mb-4 degree-section';
+            degreeSection.setAttribute('data-degree', degree_code);
 
-    function updateSubjectsTable(subjects) {
-        const tbody = document.getElementById('subjectsTableBody');
-        tbody.innerHTML = subjects.map(subject => `
-            <tr>
-                <td class="px-3">${subject.subject_code}</td>
-                <td class="px-3">${subject.subject_description}</td>
-                <td class="px-3">${subject.units}</td>
-                <td class="px-3">${subject.teachers || 'No teachers assigned'}</td>
-                <td class="px-3">
-                    <div class="btn-group" role="group">
-                        <button type="button" 
-                                class="btn btn-success btn-sm assign-teacher" 
-                                data-bs-toggle="modal" 
-                                data-bs-target="#assignTeacherModal"
-                                data-id="${subject.subject_id}"
-                                data-code="${subject.subject_code}">
-                            Assign
-                        </button>
-                        <button type="button" 
-                                class="btn btn-primary btn-sm edit-subject" 
-                                data-bs-toggle="modal" 
-                                data-bs-target="#editSubjectModal"
-                                data-id="${subject.subject_id}"
-                                data-code="${subject.subject_code}"
-                                data-description="${subject.subject_description}"
-                                data-units="${subject.units}">
-                            Edit
-                        </button>
-                        <button type="button" 
-                                class="btn btn-danger btn-sm delete-subject"
-                                data-id="${subject.subject_id}">
-                            Delete
-                        </button>
+            degreeSection.innerHTML = `
+                <div class="card shadow-sm">
+                    <div class="card-header">
+                        <h4 class="mb-0">
+                            <i class="bi bi-mortarboard-fill me-2"></i>
+                            ${degree_code} - ${group.degree_name}
+                        </h4>
                     </div>
-                </td>
-            </tr>
-        `).join('');
-        
+                    <div class="card-body p-0">
+                        <div class="table-responsive p-3">
+                            <table class="table table-hover align-middle p-2 subjectsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Subject Code</th>
+                                        <th>Description</th>
+                                        <th>Units</th>
+                                        <th>Term</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${group.subjects.map(subject => `
+                                        <tr>
+                                            <td>${subject.subject_code}</td>
+                                            <td>${subject.subject_description}</td>
+                                            <td>${subject.units}</td>
+                                            <td>
+                                                ${subject.term_label || '<span class="text-muted">No Term Assigned</span>'}
+                                            </td>
+                                            <td>
+                                                <div class="d-flex gap-2 w-100">
+                                                    <button class="btn btn-sm btn-primary flex-fill edit-subject"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#editSubjectModal"
+                                                        data-id="${subject.subject_id}"
+                                                        data-code="${subject.subject_code}"
+                                                        data-description="${subject.subject_description}"
+                                                        data-units="${subject.units}">
+                                                        <i class="bi bi-pencil-square me-1"></i> Edit
+                                                    </button>
+                                                    <button class="btn btn-sm btn-danger flex-fill delete-subject"
+                                                        data-id="${subject.subject_id}">
+                                                        <i class="bi bi-trash me-1"></i> Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            container.appendChild(degreeSection);
+        });
+
+        // Reinitialize DataTables
+        initializeDataTables();
+
+        // Reattach events
         attachEventListeners();
     }
 
-    // Add Subject Form Submit
-    document.getElementById('addSubjectForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        try {
-            const response = await fetch(BASE_URL + 'subjects_ajax.php', {
-                method: 'POST',
-                body: new FormData(this)
-            });
-            const data = await response.json();
-            if (data.status === 'success') {
-                showAlert('Subject added successfully', 'success');
-                this.reset();
-                updateSubjectsTable(data.subjects);
-                bootstrap.Modal.getInstance(document.getElementById('addSubjectModal')).hide();
-            } else {
-                showAlert(data.message || 'Error adding subject', 'danger');
+    // -------------------- Initialize DataTables --------------------
+    function initializeDataTables() {
+        const tables = document.querySelectorAll('.subjectsTable');
+        tables.forEach(table => {
+            if (!$.fn.DataTable.isDataTable(table)) {
+                $(table).DataTable({
+                    scrollY: '50vh',
+                    scrollCollapse: true,
+                    responsive: true,
+                    paging: true,
+                    ordering: true,
+                    pageLength: 10,
+                    lengthMenu: [5, 10, 25, 50, 100],
+                    columnDefs: [
+                        { orderable: false, targets: -1 } // Last column unsortable
+                    ]
+                });
             }
-        } catch (error) {
-            console.error('Error:', error);
-            showAlert('An error occurred while adding the subject', 'danger');
-        }
-    });
+        });
+    }
 
-    // Edit Subject Form Submit
-    document.getElementById('editSubjectForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        try {
-            const response = await fetch(BASE_URL + 'subjects_ajax.php', {
-                method: 'POST',
-                body: new FormData(this)
+    // -------------------- Event Listeners --------------------
+    function attachEventListeners() {
+        // Edit buttons
+        document.querySelectorAll('.edit-subject').forEach(button => {
+            button.addEventListener('click', function () {
+                document.getElementById('edit_subject_id').value = this.dataset.id;
+                document.getElementById('edit_subject_code').value = this.dataset.code;
+                document.getElementById('edit_subject_description').value = this.dataset.description;
+                document.getElementById('edit_units').value = this.dataset.units;
             });
-            const data = await response.json();
-            if (data.status === 'success') {
-                showAlert('Subject updated successfully', 'success');
-                updateSubjectsTable(data.subjects);
-                bootstrap.Modal.getInstance(document.getElementById('editSubjectModal')).hide();
-            } else {
-                showAlert(data.message || 'Error updating subject', 'danger');
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            showAlert('An error occurred while updating the subject', 'danger');
-        }
-    });
+        });
 
-    // Assign teacher form submission
-    document.getElementById('assignTeacherForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        formData.append('action', 'assign_teacher');
+        // Delete buttons
+        document.querySelectorAll('.delete-subject').forEach(button => {
+            button.addEventListener('click', async function () {
+                const subjectId = this.dataset.id;
 
-        try {
-            const response = await fetch(BASE_URL + 'subjects_ajax.php', {
-                method: 'POST',
-                body: formData
-            });
-            const data = await response.json();
+                const confirmDelete = await Swal.fire({
+                    icon: 'warning',
+                    title: 'Are you sure?',
+                    text: "This will delete the subject permanently!",
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, delete it!',
+                    cancelButtonText: 'Cancel',
+                    reverseButtons: true
+                });
 
-            if (data.status === 'success') {
-                showAlert('Teacher assigned successfully', 'success');
-                this.reset();
-                loadCurrentTeachers(formData.get('subject_id'));
-                if (data.subjects) {
-                    updateSubjectsTable(data.subjects);
+                if (!confirmDelete.isConfirmed) return;
+
+                try {
+                    const formData = new FormData();
+                    formData.append('delete', subjectId);
+
+                    const response = await fetch(BASE_URL + 'subjects_ajax.php', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        showAlert('success', 'Subject deleted successfully');
+                        updateSubjectsTable(data.subjects);
+                    } else {
+                        showAlert('danger', data.message || 'Error deleting subject');
+                    }
+                } catch (error) {
+                    console.error(error);
+                    showAlert('danger', 'An error occurred while deleting the subject');
                 }
-            } else {
-                showAlert(data.message || 'Error assigning teacher', 'danger');
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            showAlert('An error occurred while assigning the teacher', 'danger');
+            });
+        });
+    }
+// -------------------- Add Subject --------------------
+// -------------------- Add Subject --------------------
+document.getElementById('addSubjectForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    try {
+        const formData = new FormData(this);
+        formData.append('action', 'add');
+
+        // FIX: Append multiple degree_code[] properly
+        const degreeSelect = document.getElementById('degree_code');
+        const selectedDegrees = Array.from(degreeSelect.selectedOptions).map(opt => opt.value);
+
+        // Remove any existing degree_code from FormData
+        formData.delete('degree_code[]');
+
+        // Append each selected degree_code[] manually
+        selectedDegrees.forEach(code => {
+            formData.append('degree_code[]', code);
+        });
+
+        // Debugging - check payload
+        for (let [key, value] of formData.entries()) {
+            console.log(key, value);
         }
-    });
 
-    // Update assign teacher modal to load current teachers
-    const assignTeacherModal = document.getElementById('assignTeacherModal');
-    assignTeacherModal.addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget;
-        const subjectId = button.getAttribute('data-id');
-        const subjectCode = button.getAttribute('data-code');
-        
-        document.getElementById('assign_subject_id').value = subjectId;
-        document.getElementById('assign_subject_code').value = subjectCode;
-        
-        loadCurrentTeachers(subjectId);
-    });
+        const response = await fetch(BASE_URL + 'subjects_ajax.php', {
+            method: 'POST',
+            body: formData
+        });
 
-    // Initial event listeners attachment
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            showAlert('success', 'Subject added successfully');
+            this.reset();
+            updateSubjectsTable(data.subjects);
+
+            // Proper way to close modal
+            const addModalEl = document.getElementById('addSubjectModal');
+            const addModal = bootstrap.Modal.getOrCreateInstance(addModalEl);
+            addModal.hide();
+        } else {
+            showAlert('danger', data.message || 'Error adding subject');
+        }
+    } catch (error) {
+        console.error(error);
+        showAlert('danger', 'An error occurred while adding the subject');
+    }
+});
+
+// -------------------- Edit Subject --------------------
+document.getElementById('editSubjectForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    try {
+        const formData = new FormData(this);
+        formData.append('action', 'edit');
+
+        const response = await fetch(BASE_URL + 'subjects_ajax.php', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            showAlert('success', 'Subject updated successfully');
+            updateSubjectsTable(data.subjects);
+
+            // Proper way to close modal
+            const editModalEl = document.getElementById('editSubjectModal');
+            const editModal = bootstrap.Modal.getOrCreateInstance(editModalEl);
+            editModal.hide();
+        } else {
+            showAlert('danger', data.message || 'Error updating subject');
+        }
+    } catch (error) {
+        console.error(error);
+        showAlert('danger', 'An error occurred while updating the subject');
+    }
+});
+
+    // Initialize events
     attachEventListeners();
 });
+// <!-- JS Filtering -->
+const degreeFilter = document.getElementById('degreeFilter');
+const searchInput = document.getElementById('searchInput');
+const noDataMessage = document.getElementById('noDataMessage');
+const clearBtn = document.getElementById('clearSearch'); // 👈 clear button
+
+function applyFilters() {
+    let selected = degreeFilter.value.toLowerCase();
+    let search = searchInput.value.toLowerCase();
+    let anyVisible = false;
+
+    document.querySelectorAll('.degree-section').forEach(section => {
+        let degreeCode = section.getAttribute('data-degree').toLowerCase();
+        let matchDegree = !selected || degreeCode === selected;
+
+        let anyRowVisible = false;
+        section.querySelectorAll('tbody tr').forEach(row => {
+            let rowText = row.innerText.toLowerCase();
+            let matchSearch = rowText.includes(search);
+            if (matchDegree && matchSearch) {
+                row.style.display = '';
+                anyRowVisible = true;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        if (anyRowVisible) {
+            section.style.display = '';
+            anyVisible = true;
+        } else {
+            section.style.display = 'none';
+        }
+    });
+
+    // Toggle "No Data" message visibility
+    noDataMessage.classList.toggle('d-none', anyVisible);
+}
+
+// 🔹 Event listeners
+degreeFilter.addEventListener('change', applyFilters);
+searchInput.addEventListener('keyup', applyFilters);
+
+// 🔹 Clear button logic
+if (clearBtn) {
+    // Show/hide clear button when typing
+    searchInput.addEventListener('input', () => {
+        clearBtn.style.display = searchInput.value ? 'block' : 'none';
+    });
+
+    // Clear search and re-apply filters
+    clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        clearBtn.style.display = 'none';
+        searchInput.focus();
+        applyFilters();
+    });
+
+    // Optional: hover effect
+    clearBtn.addEventListener('mouseover', () => (clearBtn.style.opacity = '1'));
+    clearBtn.addEventListener('mouseout', () => (clearBtn.style.opacity = '0.8'));
+}
+
 </script>
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.css" />
-    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.js"></script>

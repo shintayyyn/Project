@@ -1,225 +1,110 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-$_SESSION['user_type'] = 'dean';
-
-// Protect this page: Allow only dean users
 if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'dean') {
-    header("Location: /Project/login.php");
-    exit();
+    header("Location: /Project/dean/login.php");
+    exit;
 }
 
 require_once __DIR__ . '/../../includes/db.php';
+require_once __DIR__ . '/../../includes/avatar_helper.php';
 
-$base_url = '/Project/dean/parents/processes';
+// Get dean's degree/department
+$dean_id = $_SESSION['t_id'] ?? null;
+$dean_query = "SELECT t_department AS degree_id FROM teachers WHERE t_id = ? AND is_dean = 1 LIMIT 1";
+$stmt = $conn->prepare($dean_query);
+$stmt->bind_param("i", $dean_id);
+$stmt->execute();
+$dean_result = $stmt->get_result();
+$dean_data = $dean_result->fetch_assoc();
+$dean_degree_id = intval($dean_data['degree_id'] ?? 0);
 
-// Handle search query
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
-$search_condition = '';
+// Optional search
+$search = isset($_GET['search']) ? $conn->real_escape_string($_GET['search']) : '';
+$search_condition = $search ? "AND (p.p_fname LIKE '%$search%' OR p.p_lname LIKE '%$search%' OR st.s_fname LIKE '%$search%' OR st.s_lname LIKE '%$search%')" : '';
 
-if ($search !== '') {
-    $safe_search = $conn->real_escape_string($search); // prevent SQL injection
-    $search_condition = "WHERE p.p_fname LIKE '%$safe_search%' OR p.p_lname LIKE '%$safe_search%' OR p.p_id LIKE '%$safe_search%'";
-}
-
-// Full query to get parents with child's name and section
+// Fetch parents whose children are in the dean's degree
 $sql = "
-    SELECT p.*, CONCAT(s.s_fname, ' ', IFNULL(s.s_mname, ''), ' ', s.s_lname, ' ', IFNULL(s.s_suffix, '')) AS child_full_name,
-           sec.section_code, p.p_password_plain
-    FROM parents p
-    LEFT JOIN parent_student ps ON p.p_id = ps.p_id
-    LEFT JOIN students s ON ps.s_id = s.s_id
-    LEFT JOIN students_sections ss ON s.s_id = ss.s_id
-    LEFT JOIN sections sec ON ss.section_id = sec.section_id
-    $search_condition
-    GROUP BY p.p_id
-    ORDER BY p.p_lname ASC
+SELECT DISTINCT
+    p.p_id,
+    p.idcode,
+    p.p_fname,
+    p.p_lname,
+    p.p_mname,
+    p.p_suffix,
+    p.p_address,
+    p.p_cnum,
+    p.p_email,
+    p.p_gender,
+    p.p_bdate,
+    p.p_status
+FROM parents p
+JOIN parent_student ps ON p.p_id = ps.p_id
+JOIN students st ON ps.s_id = st.s_id
+JOIN students_sections ss ON st.s_id = ss.s_id
+JOIN sections sec ON ss.section_id = sec.section_id
+WHERE sec.degree_id = ?
+$search_condition
+ORDER BY p.p_lname ASC
 ";
 
-$result = $conn->query($sql);
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("i", $dean_degree_id);
+$stmt->execute();
+$result = $stmt->get_result();
 ?>
-<link rel="stylesheet" href="../../assets/css/content.css">
-<script src="../../assets/js/showAlert.js"></script>
+
+
 <style>
-td{
-    border:none;
+.active-row {
+    background-color: #f0f8ff !important;
+    transition: background-color 0.3s ease;
 }
 
-/* Password cell specific styles */
-.td-password {
-    position: relative;
-    padding: 0 !important;
-    text-align: center;
+.card-body,table{
+    overflow: hidden;
 }
 
-.password-wrapper {
-    position: relative;
+.profile-avatar {
+    background-color: #033A70;
+    color: #fff;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 24px;
-    height: 100%;
+    text-transform: uppercase;
+    font-weight: bold;
 }
 
-.dots, .real-password {
-    display: inline-block;
+.card-body-empty {
     text-align: center;
-    width: auto;
-    margin: 0 auto;
+    padding: 40px 10px;
+    color: #666;
+    font-size: 1.1rem;
 }
 
-.eye-button {
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border: none;
-    background: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.card-body-empty i {
+    font-size: 2rem;
+    color: #aaa;
+    display: block;
+    margin-bottom: 10px;
 }
 
-/* Clean up hover states */
 .table-hover tbody tr:hover td {
     background-color: rgba(61, 82, 160, 0.05) !important;
 }
 
-/* Add these styles */
-.alert {
-    min-width: 300px;
-    max-width: 600px;
-    border: none;
-    border-left: 4px solid;
-    text-align: center;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+.action-buttons .btn {
+    min-width: 80px;
 }
-
-.alert-success {
-    background-color: #d1e7dd;
-    border-left-color: #198754;
-    color: #0f5132;
-}
-
-@keyframes slideIn {
-    from {
-        transform: translateY(-20px);
-        opacity: 0;
-    }
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
-}
-
-.alert.fade.show {
-    animation: slideIn 0.3s ease-out;
-}
-
-/* Success message styles */
-.success-message {
-    background-color: #d1e7dd;
-    border-left: 4px solid #198754;
-    color: #0f5132;
-    padding: 12px 20px;
-    border-radius: 4px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-    font-weight: 500;
-    animation: slideDown 0.3s ease-out;
-}
-
-@keyframes slideDown {
-    from {
-        transform: translateY(-20px) translateX(-50%);
-        opacity: 0;
-    }
-    to {
-        transform: translateY(0) translateX(-50%);
-        opacity: 1;
-    }
-}
-
-/* Success message styles */
-.message-notification {
-    background-color: #d1e7dd;
-    color: #0f5132;
-    padding: 12px 24px;
-    border-radius: 4px;
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 500;
-    opacity: 0;
-    transform: translateY(-20px) translateX(-50%);
-    transition: all 0.3s ease;
-}
-
-.message-notification.show {
-    opacity: 1;
-    transform: translateY(0) translateX(-50%);
-}
-
-.message-notification i {
-    font-size: 1.2em;
-}
-
-/* Alert Modal Styles */
-#alertModal .modal-content {
-    border-width: 2px;
-}
-
-#alertModal .modal-body i {
-    display: block;
-    margin: 0 auto;
-}
-
-#alertModal .modal-header {
-    padding: 1rem 1rem 0;
-}
-
-#alertModal .btn-close:focus {
-    box-shadow: none;
-}
-
-#alertModal p {
-    color: #666;
-}
-
-/* Fix button hover effects */
-.btn-group .btn {
-    transition: background-color 0.2s ease, color 0.2s ease;
-    transform: none !important;
-}
-
-.btn-group .btn:hover {
-    transform: none !important;
-}
-
-.btn-group .btn:active {
-    transform: none !important;
-}
-
-/* Update edit button hover styles */
-.btn-edit-student:hover, .btn-edit-teacher:hover {
-    background: linear-gradient(145deg, #2E4190 0%, #6180C8 100%) !important;
-    color: white !important;
-    border: none;
+#parentsTable td {
+    white-space: normal !important;
+    word-wrap: break-word;
 }
 
 </style>
-<center>
+
 <div class="container-fluid p-0">
-    <div id="messageContainer" class="position-fixed start-50 translate-middle-x" style="z-index: 1060; top: 20px;"></div>
-    <div id="notificationContainer" class="position-fixed start-50 translate-middle-x" style="z-index: 1060; top: 20px;"></div>
-    <div id="alertContainer" class="position-fixed start-50 translate-middle-x" style="z-index: 1060; top: 20px;"></div>
-    
+    <div id="notificationArea"></div>
+
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="mb-1">Manage Parents</h2>
@@ -230,367 +115,285 @@ td{
                 </ol>
             </nav>
         </div>
-        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addParentModal">
-            <i class="bi bi-plus-lg me-2"></i>Add New Parent
-        </button>
     </div>
 
-    <!-- Search and Filter -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Parents List</h5>
-            <form id="searchForm" class="d-flex align-items-center gap-2" style="width: 50%;">
-                <input type="hidden" name="page" value="parents">
-                <div class="flex-grow-1">
-                    <input type="text" class="form-control" name="search" placeholder="Search by name or ID..." oninput="delayedSubmit()" value="<?php echo htmlspecialchars($search); ?>">
+    <div class="row g-3">
+        <!-- Table Column -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="fw-bold">Parents List</h5>
                 </div>
-                <button type="submit" class="btn btn-primary" style="white-space: nowrap;">Search</button>
-            </form>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive p-3" style="max-height: 100%; overflow-y: auto;">
-                <table id="parentsTable" class="table table-hover align-middle p-2">
-                    <thead>
-                        <tr class="px-2 text-center">
-                            <th>ID</th>
-                            <th>Full Name</th>
-                            <th>Gender</th>
-                            <th>Birthdate</th>
-                            <th>Age</th>
-                            <th>Contact</th>
-                            <th>Email</th>
-                            <th>Password</th>
-                            <th>Status</th>
-                            <th>Child's Name - Section</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="parentsTableBody">
-                        <?php if ($result && $result->num_rows > 0): ?>
-                            <?php while($row = $result->fetch_assoc()): ?>
-                                <tr data-parent-id="<?php echo htmlspecialchars($row['p_id']); ?>">
-                                    <td><?php echo htmlspecialchars($row['p_id']); ?></td>
-                                   <td>
-                                    <?php
-                                        $lname = htmlspecialchars($row['p_lname']);
-                                        $fname = htmlspecialchars($row['p_fname']);
-                                        $mname = $row['p_mname'] ? htmlspecialchars($row['p_mname'][0]) . '.' : '';
-                                        $suffix = htmlspecialchars($row['p_suffix'] ?? '');
-                                        echo "$lname, $fname $mname $suffix";
-                                    ?>
-                                    </td>
-                                    <td class="text-center"><?php echo htmlspecialchars($row['p_gender']); ?></td>
-                                    <td><?php echo date('Y-m-d', strtotime($row['p_bdate'])); ?></td>
-                                    <td class="text-center"><?php echo htmlspecialchars($row['p_age']); ?></td>
-                                    <td class="text-center"><?php echo htmlspecialchars($row['p_cnum']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['p_email']); ?></td>
-                                    <td class="td-password">
-                                        <div class="password-wrapper">
-                                            <span class="dots">••••••••</span>
-                                            <span class="real-password" style="display: none;"><?php echo htmlspecialchars($row['p_password_plain']);?></span>
-                                            <button type="button" class="eye-button">
-                                                <i class="bi bi-eye"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                   <td class="text-center student-status">
-                                        <span class="badge bg-<?php echo $row['p_status'] == 'active' ? 'success' : 'danger'; ?>">
-                                            <?php echo ucfirst($row['p_status']); ?>
-                                        </span>
-                                    </td>
-
-                                    <td class="text-center"><?php echo htmlspecialchars($row['child_full_name'] . ' - ' . ($row['section_code'] ?? 'No child record.')); ?></td>
-                                    <td class="text-center">
-                                        <div class="btn-group btn-group-sm">
-                                            <button type="button" class="btn btn-primary px-2 btn-edit-parent" data-bs-toggle="modal" data-bs-target="#editParentModal" data-parent-id="<?php echo $row['p_id']; ?>">
-                                                <i class="bi bi-pencil"></i>
-                                            </button>
-                                            <button class="btn btn-danger px-2 btn-delete-parent" data-parent-id="<?php echo $row['p_id']; ?>">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                    
+                <div class="card-body">
+                    <div class="table-responsive p-3 ">
+                        <table id="parentsTable" class="display nowrap table table-hover">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>ID Code</th>
+                                    <th>Full Name</th>
+                                    <th>Child</th>
+                                    <th>Email</th>
+                                    <th>Gender</th>
+                                    <th>Birthdate</th>
+                                    <th>Contact</th>
+                                    <th>Address</th>
                                 </tr>
-                            <?php endwhile; ?>
-                        <?php else: ?>
-                            <tr>
-                                <td colspan="14" class="text-center">No parent information found.</td>
-                            </tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+                            </thead>
+                        <tbody>
+
+<?php if ($result && $result->num_rows > 0): ?>
+    <?php while ($row = $result->fetch_assoc()): ?>
+        <?php
+        $p_id = $row['p_id'];
+
+        // Parent full name
+        $full_name = $p_id 
+            ? htmlspecialchars(
+                $row['p_lname'] . 
+                (!empty($row['p_suffix']) ? ' ' . $row['p_suffix'] : '') . 
+                ', ' . $row['p_fname'] . 
+                (!empty($row['p_mname']) ? ' ' . strtoupper(substr($row['p_mname'], 0, 1)) . '.' : '')
+              ) 
+            : '<span class="badge bg-secondary">Solo child</span>';
+
+        // Fetch children with year level readable
+        $children_sql = "
+            SELECT st.s_fname, st.s_lname, st.s_mname, st.s_suffix, s.section_code, 
+                   yl.level_name
+            FROM parent_student ps
+            LEFT JOIN students st ON ps.s_id = st.s_id
+            LEFT JOIN students_sections s ON ps.s_id = s.s_id
+            LEFT JOIN year_levels yl ON st.year_level = yl.id
+            WHERE ps.p_id = {$p_id}
+        ";
+        $children_result = $conn->query($children_sql);
+        $children = [];
+        if ($children_result && $children_result->num_rows > 0) {
+            while ($c = $children_result->fetch_assoc()) {
+                $mInitial = !empty($c['s_mname']) ? ' ' . strtoupper(substr($c['s_mname'], 0, 1)) . '.' : '';
+                $suffix = !empty($c['s_suffix']) ? ' ' . $c['s_suffix'] : '';
+                $section = !empty($c['section_code']) ? $c['section_code'] : 'Not yet assigned';
+                $year_level = !empty($c['level_name']) ? $c['level_name'] : '-';
+
+                $children[] = "{$c['s_lname']}{$suffix}, {$c['s_fname']}{$mInitial} ({$section}) [{$year_level}]";
+            }
+        }
+
+        // Display children or just View All button if more than 1
+        if (count($children) > 1) {
+            $child_display = '<button class="btn btn-sm btn-outline-primary view-all-children" data-parent-id="'.$p_id.'">View All</button>';
+        } else {
+            $child_display = $children[0] ?? 'No child linked';
+        }
+
+        // Avatar
+        $avatar_path = $p_id ? "/Project/uploads/parents/parent_{$p_id}.jpg" : '';
+        $server_path = $_SERVER['DOCUMENT_ROOT'] . $avatar_path;
+        $avatar_exists = file_exists($server_path);
+        $initials = $p_id ? strtoupper(substr($row['p_fname'], 0, 1) . substr($row['p_lname'], 0, 1)) : '';
+        ?>
+        <tr 
+            data-parent-id="<?= htmlspecialchars($p_id) ?>"
+            data-parent-idcode="<?= htmlspecialchars($row['idcode']) ?>"
+            data-parent-name="<?= htmlspecialchars($full_name) ?>"
+            data-parent-email="<?= htmlspecialchars($row['p_email']) ?>"
+            data-parent-status="<?= htmlspecialchars($row['p_status']) ?>"
+            data-parent-gender="<?= htmlspecialchars($row['p_gender']) ?>"
+            data-parent-bdate="<?= !empty($row['p_bdate']) ? date('Y-m-d', strtotime($row['p_bdate'])) : '' ?>"
+            data-parent-cnum="<?= htmlspecialchars($row['p_cnum']) ?>"
+            data-parent-address="<?= htmlspecialchars($row['p_address'] ?? '-') ?>"
+            data-parent-avatar="<?= $avatar_exists ? $avatar_path : '' ?>"
+        >
+            <td></td>
+            <td><?= htmlspecialchars($row['idcode'] ?? '-') ?></td>
+            <td>
+                <div class="d-flex align-items-center gap-2">
+                    <?php if ($avatar_exists): ?>
+                        <img src="<?= $avatar_path ?>" alt="Avatar" class="rounded-circle" style="width:35px; height:35px; object-fit:cover;">
+                    <?php else: ?>
+                        <div class="profile-avatar" style="width:35px; height:35px; font-size:0.9rem;"><?= $initials ?></div>
+                    <?php endif; ?>
+                    <?= $full_name ?>
+                </div>
+            </td>
+            <td><?= $child_display ?></td>
+            <td>
+                <span class="badge bg-<?= ($row['p_status'] ?? 'inactive') === 'active' ? 'success' : 'danger' ?>">
+                    <?= ucfirst($row['p_status'] ?? 'Inactive') ?>
+                </span>
+            </td>
+            <td><?= htmlspecialchars($row['p_email'] ?? '-') ?></td>
+            <td><?= htmlspecialchars($row['p_gender'] ?? '-') ?></td>
+            <td><?= !empty($row['p_bdate']) ? date('Y-m-d', strtotime($row['p_bdate'])) : '-' ?></td>
+            <td><?= htmlspecialchars($row['p_cnum'] ?? '-') ?></td>
+            <td><?= htmlspecialchars($row['p_address'] ?? '-') ?></td>
+            <td style="display:none;"><?= htmlspecialchars($row['ps_created']) ?></td>
+        </tr>
+    <?php endwhile; ?>
+<?php else: ?>
+    <tr>
+        <td colspan="10" class="text-center">No parents found.</td>
+    </tr>
+<?php endif; ?>
+</tbody>
+
+
+
+
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Details Column -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm" id="parentDetailsCard">
+                <div class="card-header">
+                    <h5 class="mb-0 fw-bold">Personal Information</h5>
+                </div>
+                <div class="card-body" id="parentDetailsBody">
+                    <div class="card-body-empty d-flex flex-column" id="noParentSelected">
+                        <i class="bi bi-person-lines-fill"></i>
+                        No parent selected.
+                        <small class=" fst-italic">Click a row in the table to view teacher information.</small>
+                    </div>
+                    
+                </div>
             </div>
         </div>
     </div>
 </div>
-</center>
 
-<!-- Add Parent Modal -->
-<div class="modal fade" id="addParentModal" tabindex="-1">
+<?php include 'modals.php'; ?>
+
+<!-- Modal HTML -->
+<div class="modal fade" id="childrenModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add New Parent</h5>
+                <h5 class="modal-title">Children of <span id="parentName"></span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="addParentForm" method="POST" novalidate>
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">First Name</label>
-                            <input type="text" class="form-control name-input" name="p_fname" id="add_p_fname" pattern="[A-Za-z\-\s]+" required>
-                            <div class="invalid-feedback">Please enter a valid first name</div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Last Name</label>
-                            <input type="text" class="form-control name-input" name="p_lname" id="add_p_lname" pattern="[A-Za-z\-\s]+" required>
-                            <div class="invalid-feedback">Please enter a valid last name</div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Middle Name</label>
-                            <input type="text" class="form-control name-input" name="p_mname" pattern="[A-Za-z\-\s]*">
-                            <div class="invalid-feedback">Please enter a valid middle name</div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Suffix</label>
-                            <input type="text" class="form-control name-input" name="p_suffix" pattern="[A-Za-z\-\s\.]*">
-                            <div class="invalid-feedback">Please enter a valid suffix</div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Gender</label>
-                            <select class="form-select" name="p_gender" required>
-                                <option value="">Select Gender</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Birthdate</label>
-                            <input type="date" class="form-control" name="p_bdate" id="add_p_bdate" required>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Contact Number</label>
-                            <input type="tel" class="form-control" name="p_cnum" pattern="^09[0-9]{9}$" maxlength="11" placeholder="09XXXXXXXXX" title="Please enter a valid 11-digit phone number starting with 09" required>
-                            <div class="invalid-feedback">Please enter a valid 11-digit phone number starting with 09</div>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Email</label>
-                            <input type="email" class="form-control" name="p_email" required pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$">
-                            <div class="invalid-feedback">Please enter a valid email address</div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Password</label>
-                            <input type="text" name="p_password_plain" id="add_p_password_plain" class="form-control" readonly>
-                            <small class="text-muted">Password will auto-generate based on name and birthdate</small>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Status</label>
-                            <select class="form-select" name="p_status">
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-12 mb-3">
-                            <label class="form-label">Select Child (Optional)</label>
-                            <select class="form-select" name="child_id">
-                                <option value="">-- No Child Selected --</option>
-                                <?php
-
-$students_query = "
-    SELECT 
-        s.s_id, 
-        s.s_fname, 
-        s.s_lname, 
-        s.s_mname, 
-        sec.section_code 
-    FROM students s
-    LEFT JOIN students_sections ss ON s.s_id = ss.s_id
-    LEFT JOIN sections sec ON ss.section_id = sec.section_id
-    ORDER BY s.s_lname ASC
-";
-
-$students_result = $conn->query($students_query);
-
-while ($student = $students_result->fetch_assoc()) {
-    $full_name = $student['s_lname'] . ', ' . $student['s_fname'] .
-                 (!empty($student['s_mname']) ? ' ' . $student['s_mname'] : '');
-    $section = $student['section_code'] ?? 'No Section';
-
-    echo "<option value='" . htmlspecialchars($student['s_id']) . "'>" . 
-         htmlspecialchars("{$full_name} - {$section}") . "</option>";
-}
-?>
-
-                            </select>
-                        </div>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="submit" form="addParentForm" class="btn btn-primary">Add Parent</button>
+                <ul class="list-group list-group-flush text-left" id="childrenList">
+                    <!-- Children will be populated here -->
+                </ul>
             </div>
         </div>
     </div>
 </div>
 
-
-<!-- Edit Parent Modal -->
-<div class="modal fade" id="editParentModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Edit Parent</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="editParentForm">
-                    <input type="hidden" name="p_id" id="edit_p_id">
-
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">First Name</label>
-                            <input type="text" class="form-control" name="p_fname" id="edit_p_fname" required>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Last Name</label>
-                            <input type="text" class="form-control" name="p_lname" id="edit_p_lname" required>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Middle Name</label>
-                            <input type="text" class="form-control" name="p_mname" id="edit_p_mname">
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Suffix</label>
-                            <input type="text" class="form-control" name="p_suffix" id="edit_p_suffix">
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Gender</label>
-                            <select class="form-select" name="p_gender" id="edit_p_gender" required>
-                                <option value="">Select Gender</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Birthdate</label>
-                            <input type="date" class="form-control" name="p_bdate" id="edit_p_bdate" required>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Contact Number</label>
-                            <input type="tel" class="form-control" name="p_cnum" id="edit_p_cnum" pattern="^09[0-9]{9}$" maxlength="11" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Email</label>
-                            <input type="email" class="form-control" name="p_email" id="edit_p_email" required>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Status</label>
-                            <select class="form-select" name="p_status" id="edit_p_status">
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                            </select>
-                        </div>
-                         <div class="col-md-6 mb-3">
-                        <label class="form-label">Password</label>
-                        <input type="text" name="p_password_plain" id="edit_p_password_plain" class="form-control" readonly>
-                    </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12 mb-3">
-                            <label class="form-label">Child</label>
-                            <select class="form-select" name="child_id" id="edit_child_id">
-                                <option value="">Select Child</option>
-                                <!-- Options will be dynamically filled by jQuery -->
-                            </select>
-                        </div>
-                    </div>
-                </form>
-            </div>
-
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="submit" form="editParentForm" class="btn btn-primary">Update Parent</button>
-            </div>
-        </div>
-    </div>
-</div>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="/dean/parents/js/edit_parent.js"></script>
+<script src="/dean/parents/js/delete_parent.js"></script>
 
 <script>
-    $(document).ready(function () {
-    $('#parentsTable').DataTable({
-        scrollY: '50vh',           // Adjust height for approx. 10 rows
-        scrollCollapse: true,
-        paging: true,
-        pageLength: 10,
-        lengthMenu: [5, 10, 25, 50, 100],
-        ordering: true,
-        columnDefs: [
-            { orderable: false, targets: -1 }
-        ],
-        dom: '<"row mb-2"<"col-sm-6"l><"col-sm-6"f>>tip',
-        language: {
-            lengthMenu: "Show _MENU_ entries"
+$(document).ready(function() {
+   window.parentsTable = $('#parentsTable').DataTable({
+    scrollY: '50vh',
+    scrollCollapse: true,
+    paging: true,
+    responsive: true,
+    autoWidth: false,
+    columnDefs: [
+        { className: 'dtr-control', orderable: false, targets: 0 },
+        { targets: [4,5,6,7,8,9], visible: false }, // hide extra columns
+        { targets: 10, visible: false } // hidden column for ps_created
+    ],
+    order: [[10, 'desc']] // order by ps_created descending
+});
+
+
+$(document).on('click', '.view-all-children', function(){
+    const parentId = $(this).data('parent-id');
+    $('#childrenList').empty(); // clear previous list
+    $('#parentName').text($(this).closest('tr').data('parent-name'));
+
+    $.ajax({
+        url: '/dean/parents/processes/get_children.php',
+        method: 'GET',
+        data: { parent_id: parentId },
+        dataType: 'json',
+        success: function(res){
+            if(res.success && res.children.length > 0){
+                res.children.forEach(function(child){
+                    $('#childrenList').append(
+                        `<li class="list-group-item">
+                            ${child.name} - ${child.section} (${child.term}, ${child.year_level})
+                        </li>`
+                    );
+                });
+            } else {
+                $('#childrenList').append('<li class="list-group-item">No children found.</li>');
+            }
+            $('#childrenModal').modal('show');
+        },
+        error: function(xhr, status, error){
+            console.error('AJAX error:', error);
         }
     });
 });
-    // Password toggle functionality
-    $(document).on('click', '.eye-button', function() {
-        const $wrapper = $(this).closest('.password-wrapper');
-        const $dots = $wrapper.find('.dots');
-        const $password = $wrapper.find('.real-password');
-        const $icon = $(this).find('i');
 
-        if ($dots.is(':visible')) {
-            $dots.hide();
-            $password.show();
-            $icon.removeClass('bi-eye').addClass('bi-eye-slash');
-        } else {
-            $dots.show();
-            $password.hide();
-            $icon.removeClass('bi-eye-slash').addClass('bi-eye');
-        }
-    });
-document.addEventListener('DOMContentLoaded', function () {
-    const tbody = document.getElementById('parentsTableBody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
 
-    rows.sort((a, b) => {
-        const idA = parseInt(a.dataset.parentId);
-        const idB = parseInt(b.dataset.parentId);
-        return idA - idB; // ascending order
-    });
+    // Row click - show parent details
+    $('#parentsTable tbody').on('click', 'tr', function() {
+    $('#parentsTable tbody tr').removeClass('active-row');
+    $(this).addClass('active-row');
 
-    rows.forEach(row => tbody.appendChild(row)); // re-append in sorted order
+    const parentId = $(this).data('parent-id');
+    const name = $(this).data('parent-name');
+    const email = $(this).data('parent-email');
+    const status = $(this).data('parent-status');
+    const avatar = $(this).data('parent-avatar');
+    const gender = $(this).data('parent-gender');
+    const bdate = $(this).data('parent-bdate');
+    const cnum = $(this).data('parent-cnum');
+    const address = $(this).data('parent-address');
+    const termLabel = $(this).data('term-label') || '-';
+
+    const statusBadge = status.toLowerCase() === 'active'
+        ? `<span class="badge rounded-pill bg-success">Active</span>`
+        : `<span class="badge rounded-pill bg-danger">Inactive</span>`;
+
+    let avatarHTML = avatar
+        ? `<img src="${avatar}" class="rounded-circle mb-3" style="width:120px; height:120px; object-fit:cover;">`
+        : `<div class="profile-avatar mx-auto mb-3" style="width:120px; height:120px; font-size:2rem;">
+            ${name.split(/[ ,]+/).map(n => n.charAt(0)).join('').substring(0,2).toUpperCase()}
+          </div>`;
+
+    $('#parentDetailsBody').html(`
+        ${avatarHTML}
+        <h5>${name}</h5>
+        <p class="text-muted mb-1"><strong>Email:</strong> ${email}</p>
+        <p class="text-muted mb-1"><strong>Status:</strong> ${statusBadge}</p>
+        <p class="text-muted mb-1"><strong>Gender:</strong> ${gender}</p>
+        <p class="text-muted mb-1"><strong>Birthdate:</strong> ${bdate}</p>
+        <p class="text-muted mb-1"><strong>Contact:</strong> ${cnum}</p>
+        <p class="text-muted mb-1"><strong>Address:</strong> ${address}</p>
+        <p class="text-muted mb-1"><strong>Term:</strong> ${termLabel}</p>
+    `);
 });
 
+// Populate child select
+const $childSelect = $('#editParentForm select[name="child_id"]');
+if ($childSelect.length) {
+    $childSelect.empty();
+    $('<option>', { value: '', text: 'Select Child' }).appendTo($childSelect);
+    if (response.children && response.children.length > 0) {
+        $.each(response.children, function (index, child) {
+            $('<option>', {
+                value: child.s_id,
+                text: `${child.full_name} - ${child.section_code || 'Not Assigned'}`,
+                selected: child.s_id == parent.child_id // pre-select current child if any
+            }).appendTo($childSelect);
+        });
+    }
+}
+
+});
 </script>
-
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.css" />
-    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.js"></script>
-
-<script src="/Project/dean/parents/js/add_parent.js"></script>
-<script src="/Project/dean/parents/js/edit_parent.js"></script>
-<script src="/Project/dean/parents/js/delete_parent.js"></script>
-</body>
