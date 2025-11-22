@@ -46,7 +46,17 @@ try {
     $s_lname   = trim($_POST['s_lname']);
     $s_mname   = !empty($_POST['s_mname']) ? trim($_POST['s_mname']) : null;
     $s_suffix  = !empty($_POST['s_suffix']) ? trim($_POST['s_suffix']) : null;
-    $s_gender  = $_POST['s_gender'];
+
+    // Normalize gender to match ENUM ('Male','Female','Other')
+    $s_gender_raw = strtolower(trim($_POST['s_gender'] ?? 'other'));
+    if (in_array($s_gender_raw, ['male', 'm'])) {
+        $s_gender = 'Male';
+    } elseif (in_array($s_gender_raw, ['female', 'f'])) {
+        $s_gender = 'Female';
+    } else {
+        $s_gender = 'Other';
+    }
+
     $s_bdate   = $_POST['s_bdate'];
     $s_cnum    = $_POST['s_cnum'];
     $s_address = $_POST['s_address'];
@@ -165,7 +175,7 @@ try {
         $p_lname   = 'Solo';
         $p_mname   = '';
         $p_suffix  = '';
-        $p_gender  = 'N/A';
+        $p_gender  = 'Other'; // Changed from 'N/A' to match ENUM
         $p_bdate   = $s_bdate;
         $p_cnum    = $s_cnum;
         $p_address = $s_address;
@@ -209,7 +219,17 @@ try {
         $p_lname  = trim($_POST['p_lname']);
         $p_mname  = !empty($_POST['p_mname']) ? trim($_POST['p_mname']) : '';
         $p_suffix = !empty($_POST['p_suffix']) ? trim($_POST['p_suffix']) : '';
-        $p_gender = $_POST['p_gender'];
+
+        // Normalize gender to match ENUM ('Male','Female','Other')
+        $p_gender_raw = strtolower(trim($_POST['p_gender'] ?? 'other'));
+        if (in_array($p_gender_raw, ['male', 'm'])) {
+            $p_gender = 'Male';
+        } elseif (in_array($p_gender_raw, ['female', 'f'])) {
+            $p_gender = 'Female';
+        } else {
+            $p_gender = 'Other';
+        }
+
         $p_bdate  = $_POST['p_bdate'];
         $p_cnum   = $_POST['p_cnum'];
         $p_address= $_POST['p_address'];
