@@ -291,13 +291,13 @@ if ($is_solo === 2) {
     $conn->commit();
 
     // Save upload history
-    $dean_id = $_SESSION['user_id'] ?? 0;
+    $dean_id = $_SESSION['user_type'] ?? 0;
     $raw_json = json_encode($rows);
 
     $stmt = $conn->prepare("INSERT INTO upload_history 
         (filename, total_records, uploaded_by, raw_data, uploaded_at, status, is_deleted)
         VALUES (?, ?, ?, ?, NOW(), 'Processed', 0)");
-    $stmt->bind_param("siis", $originalName, $insertedCount, $dean_id, $raw_json);
+    $stmt->bind_param("siss", $originalName, $insertedCount, $dean_id, $raw_json);
     $stmt->execute();
     $stmt->close();
 
