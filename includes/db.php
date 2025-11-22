@@ -1,14 +1,30 @@
 <?php
 date_default_timezone_set('Asia/Manila');
-// Load .env file manually
-$env = parse_ini_file(__DIR__ . '/../.env');
 
-// DB constants from .env
-define('DB_HOST', $env['DB_HOST']);
-define('DB_USER', $env['DB_USER']);
-define('DB_PASS', $env['DB_PASS']);
-define('DB_NAME', $env['DB_NAME']);
-define('DB_PORT', $env['DB_PORT'] ?? 3306); // default port if missing
+// Try environment variables first (Coolify/Docker), then fall back to .env file (local)
+$env_file_path = __DIR__ . '/../.env';
+
+if (getenv('DB_HOST') !== false) {
+    // Production: Read from environment variables set by Coolify
+    define('DB_HOST', getenv('DB_HOST'));
+    define('DB_USER', getenv('DB_USER'));
+    define('DB_PASS', getenv('DB_PASS'));
+    define('DB_NAME', getenv('DB_NAME'));
+    define('DB_PORT', getenv('DB_PORT') ?: 3306);
+} elseif (file_exists($env_file_path)) {
+    // Local development: Read from .env file
+    $env = parse_ini_file($env_file_path);
+    define('DB_HOST', $env['DB_HOST']);
+    define('DB_USER', $env['DB_USER']);
+    define('DB_PASS', $env['DB_PASS']);
+    define('DB_NAME', $env['DB_NAME']);
+    define('DB_PORT', $env['DB_PORT'] ?? 3306);
+} else {
+    // No configuration available
+    error_log("ERROR: No database configuration found");
+    header('Content-Type: application/json');
+    die(json_encode(['success' => false, 'message' => 'Database configuration error']));
+}
 
 // Allow cross-origin requests
 header("Access-Control-Allow-Origin: *");
