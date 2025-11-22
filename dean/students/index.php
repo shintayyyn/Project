@@ -235,47 +235,13 @@ $avatar_path = "/uploads/students/student_{$row['s_id']}.jpg";
 $server_path = $_SERVER['DOCUMENT_ROOT'] . $avatar_path;
 $avatar_exists = file_exists($server_path);
 
-// Determine active term
-$term_id = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1")
-                ->fetch_assoc()['term_id'] ?? 0;
-
-// Initialize section_code
-$section_code = '';
-
-// Fetch section_code depending on is_regular
-if ($term_id) {
-    if ($row['is_regular'] == 1) {
-        // Regular student: fetch from students_sections for active term
-        $stmtSec = $conn->prepare("
-            SELECT section_code
-            FROM students_sections
-            WHERE s_id = ? AND term_id = ?
-            ORDER BY ss_id DESC
-            LIMIT 1
-        ");
-    } else {
-        // Irregular student: fetch from subject_enrollments for active term
-        $stmtSec = $conn->prepare("
-            SELECT section_code
-            FROM subject_enrollments
-            WHERE s_id = ? AND term_id = ?
-            ORDER BY se_id DESC
-            LIMIT 1
-        ");
-    }
-
-    $stmtSec->bind_param("ii", $row['s_id'], $term_id);
-    $stmtSec->execute();
-    $secResult = $stmtSec->get_result()->fetch_assoc();
-    $stmtSec->close();
-
-    $section_code = $secResult['section_code'] ?? '';
-}
+// Use section_code from main query (already fetched)
+$section_code = $row['section_code'] ?? '';
 
 // Extract year level from section_code (if present)
 $yearLevel = null;
-if (!empty($section_code)) {
-    $parts = explode(' ', $section_code); // e.g., ['BSHM', '3A']
+if (!empty($section_code) && $section_code !== 'Not yet assigned') {
+    $parts = explode(' ', $section_code);
     if (isset($parts[1])) {
         preg_match('/\d+/', $parts[1], $matches);
         if (!empty($matches)) {
@@ -283,8 +249,6 @@ if (!empty($section_code)) {
         }
     }
 }
-
-$row['section_code'] = $section_code; // assign for display
 ?>
  <tr class="student-row"
     data-student-id="<?= htmlspecialchars($row['s_id']); ?>"
