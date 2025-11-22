@@ -526,9 +526,9 @@ overflow-x:hidden !important;
                             </td>
                            <td>
                             <div class="d-flex flex-column">
-                                <span><?php echo htmlspecialchars($schedule['subject_code']); ?></span>
-                                <small class="text-muted mb-1">(<?php echo htmlspecialchars($schedule['subject_description']); ?>)</small>
-                                <small class="text-muted"><?php echo htmlspecialchars($schedule['units']); ?> units</small>
+                                <span><?php echo htmlspecialchars($schedule['subject_code'] ?? ''); ?></span>
+                                <small class="text-muted mb-1">(<?php echo htmlspecialchars($schedule['subject_description'] ?? 'N/A'); ?>)</small>
+                                <small class="text-muted"><?php echo htmlspecialchars($schedule['units'] ?? '0'); ?> units</small>
                             </div>
                         </td>
                             <td>
