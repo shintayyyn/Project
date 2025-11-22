@@ -117,6 +117,8 @@ foreach($subjects as $sheetIndex => $subj){
     $students = [];
     $stmt = $conn->prepare("
         SELECT DISTINCT s.s_id,
+               s.s_lname,
+               s.s_fname,
                s.is_regular,  -- ✅ Fetch is_regular
               CONCAT(
                 s.s_lname,
