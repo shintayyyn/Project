@@ -1,12 +1,20 @@
 <?php
-// ✅ Allow cross-origin requests from your frontend
-// Allow requests from any origin (or specify your frontend domain)
+// Load .env file manually
+$env = parse_ini_file(__DIR__ . '/../.env');
+
+// DB constants from .env
+define('DB_HOST', $env['DB_HOST']);
+define('DB_USER', $env['DB_USER']);
+define('DB_PASS', $env['DB_PASS']);
+define('DB_NAME', $env['DB_NAME']);
+define('DB_PORT', $env['DB_PORT'] ?? 3306); // default port if missing
+
+// Allow cross-origin requests
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
 
-
-// ✅ Handle preflight (OPTIONS) requests
+// Handle preflight (OPTIONS) requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
     exit();
@@ -18,15 +26,8 @@ if ($method === 'OPTIONS') {
     exit();
 }
 
-
-define('DB_HOST', $_ENV['DB_HOST'] ?? 'localhost');
-define('DB_USER', $_ENV['DB_USER'] ?? 'root');
-define('DB_PASS', $_ENV['DB_PASS'] ?? '');
-define('DB_NAME', $_ENV['DB_NAME'] ?? 'records');
-define('DB_PORT', $_ENV['DB_PORT'] ?? 3306);
-
-
-$conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+// Connect to DB using .env values
+$conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
 
 if ($conn->connect_error) {
     error_log("Connection failed: " . $conn->connect_error);
