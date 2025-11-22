@@ -598,9 +598,6 @@ if (irregularCheckbox) toggleIrregular(irregularCheckbox);
             <label class="form-label fw-semibold">Parent Address</label>
             <div class="input-group shadow-sm rounded-3">
                 <input class="form-control rounded-start-3" name="p_address" id="p_address" required>
-                <button class="btn btn-outline-secondary rounded-end-3" type="button" id="copyAddressBtn" title="Copy Student Address">
-                    Same as Student Address
-                </button>
             </div>
             <div class="invalid-feedback">Please enter the parent's address</div>
         </div>
