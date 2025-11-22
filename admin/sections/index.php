@@ -196,20 +196,11 @@ while ($section = $all_sections_result->fetch_assoc()) {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php 
+                    <?php
                     $displayed_count = 0;
                     while($student = $unassigned_students->fetch_assoc()) {
                         $displayed_count++;
-                    $degrees = [];
-                        $result = $conn->query("SELECT degree_id, degree_code, degree_name FROM degrees ORDER BY degree_name ASC");
-
-                        if ($result) {
-                            while ($row = $result->fetch_assoc()) {
-                                $degrees[] = $row;
-                            }
-                        }
-
-
+                        // $degrees is already fetched at the top of the file (line 104)
                     ?>
                     <tr data-student-id="<?php echo htmlspecialchars($student['s_id']); ?>">
                         <td><?php echo htmlspecialchars($student['idcode']); ?></td>
@@ -352,14 +343,29 @@ $active_term_id = $active_term['term_id'] ?? 0;
 $sections_query = "
     SELECT s.section_id, s.section_code, s.section_name, s.year_level, s.max_students,
            d.degree_name, d.degree_code,
-           s.term_id AS section_term_id, -- for filtering
+           s.term_id AS section_term_id,
            sa.sa_id, sa.t_id,
-           CONCAT(t.t_lname, ', ', t.t_fname, ' ', LEFT(t.t_mname,1),'.') AS advisor_name
+           CONCAT(t.t_lname, ', ', t.t_fname, ' ', LEFT(t.t_mname,1),'.') AS advisor_name,
+           COALESCE(sc.student_count, 0) AS student_count,
+           COALESCE(sc.latest_updated, '-') AS updated_at,
+           ay.year_start,
+           ay.year_end,
+           at.semester
     FROM sections s
     LEFT JOIN degrees d ON s.degree_id = d.degree_id
-    LEFT JOIN sections_advisors sa 
+    LEFT JOIN sections_advisors sa
         ON s.section_id = sa.section_id AND sa.term_id = {$active_term_id} AND sa.is_active = 1
     LEFT JOIN teachers t ON sa.t_id = t.t_id
+    LEFT JOIN (
+        SELECT section_id,
+               COUNT(DISTINCT s_id) AS student_count,
+               MAX(updated_at) AS latest_updated
+        FROM students_sections
+        WHERE term_id = {$active_term_id}
+        GROUP BY section_id
+    ) sc ON s.section_id = sc.section_id
+    LEFT JOIN academic_terms at ON s.term_id = at.term_id
+    LEFT JOIN academic_years ay ON at.ay_id = ay.ay_id
     ORDER BY d.degree_name, s.section_code
 ";
 
@@ -369,47 +375,23 @@ while ($row = $sections_result->fetch_assoc()) {
     $sections[] = $row;
 }
 
-foreach ($sections as $section) { 
+foreach ($sections as $section) {
     $section_id = (int)$section['section_id'];
-    $section_term_id = (int)$section['section_term_id']; // term for filtering
+    $section_term_id = (int)$section['section_term_id'];
 
-    // ------------------ Count unique students in this section for the active term ------------------
-    $students_query = "
-        SELECT COUNT(DISTINCT s_id) AS student_count
-        FROM students_sections
-        WHERE section_id = ? AND term_id = ?
-    ";
-    $stmt = $conn->prepare($students_query);
-    $stmt->bind_param("ii", $section_id, $active_term_id);
-    $stmt->execute();
-    $students_count = $stmt->get_result()->fetch_assoc()['student_count'] ?? 0;
-    $stmt->close();
+    // Student count, updated_at, and academic year are now fetched in the main query
+    $students_count = $section['student_count'];
+    $updated_at = $section['updated_at'];
 
-    // Get latest updated_at for this section and active term
-    $latest_updated_query = "
-        SELECT MAX(updated_at) AS latest_updated
-        FROM students_sections
-        WHERE section_id = ? AND term_id = ?
-    ";
-    $stmt2 = $conn->prepare($latest_updated_query);
-    $stmt2->bind_param("ii", $section_id, $active_term_id);
-    $stmt2->execute();
-    $updated_at = $stmt2->get_result()->fetch_assoc()['latest_updated'] ?? '-';
-    $stmt2->close();
-
-    // Term display (always active term)
-   $term_display = '-';
-if ($active_term) {
-    // Fetch the academic year for the active term
-    $ay_id = $active_term['ay_id'] ?? 0;
-    $ay_result = $conn->query("SELECT year_start, year_end FROM academic_years WHERE ay_id = {$ay_id} LIMIT 1");
-    $ay_row = $ay_result->fetch_assoc();
-    $year_start = $ay_row['year_start'] ?? '-';
-    $year_end = $ay_row['year_end'] ?? '-';
-
-    $term_display = "A.Y. " . htmlspecialchars($year_start) . "-" . htmlspecialchars($year_end)
-                    . " | " . htmlspecialchars($active_term['semester'] ?? '-');
-}
+    // Build term display from fetched data
+    $term_display = '-';
+    if (!empty($section['year_start']) && !empty($section['semester'])) {
+        $year_start = $section['year_start'];
+        $year_end = $section['year_end'] ?? '-';
+        $semester = $section['semester'];
+        $term_display = "A.Y. " . htmlspecialchars($year_start) . "-" . htmlspecialchars($year_end)
+                        . " | " . htmlspecialchars($semester);
+    }
 
 ?>
     <!-- No Records Placeholder -->
