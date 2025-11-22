@@ -242,19 +242,27 @@ if (!empty($section_code) && $section_code !== 'Not yet assigned') {
         }
     }
 }
+
+// Calculate age from birthdate
+$age = '';
+if (!empty($row['s_bdate'])) {
+    $birthDate = new DateTime($row['s_bdate']);
+    $today = new DateTime('today');
+    $age = $birthDate->diff($today)->y;
+}
 ?>
 
  <tr class="student-row"
-    data-student-id="<?= htmlspecialchars($row['s_id']); ?>"
-    data-idcode="<?= htmlspecialchars($row['idcode']); ?>"
+    data-student-id="<?= htmlspecialchars($row['s_id'] ?? ''); ?>"
+    data-idcode="<?= htmlspecialchars($row['idcode'] ?? ''); ?>"
     data-fullname="<?= htmlspecialchars($fullName); ?>"
-    data-email="<?= htmlspecialchars($row['s_email']); ?>"
+    data-email="<?= htmlspecialchars($row['s_email'] ?? ''); ?>"
     data-parent="<?= !empty($row['parent_fullname']) ? htmlspecialchars($row['parent_fullname']) : 'Solo (No Parent)'; ?>"
-    data-status="<?= htmlspecialchars($row['s_status']); ?>"
-    data-gender="<?= htmlspecialchars($row['s_gender']); ?>"
+    data-status="<?= htmlspecialchars($row['s_status'] ?? ''); ?>"
+    data-gender="<?= htmlspecialchars($row['s_gender'] ?? ''); ?>"
     data-bdate="<?= date('Y-m-d', strtotime($row['s_bdate'])); ?>"
-    data-age="<?= htmlspecialchars($row['s_age']); ?>"
-    data-cnum="<?= htmlspecialchars($row['s_cnum']); ?>"
+    data-age="<?= htmlspecialchars($age); ?>"
+    data-cnum="<?= htmlspecialchars($row['s_cnum'] ?? ''); ?>"
     data-address="<?= htmlspecialchars($row['s_address'] ?? ''); ?>"
     data-section="<?= htmlspecialchars($row['section_code'] ?? ''); ?>"
     data-is_regular="<?= htmlspecialchars($row['is_regular'] ?? ''); ?>"
