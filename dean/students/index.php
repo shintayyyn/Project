@@ -101,7 +101,18 @@ LEFT JOIN subject_enrollments se ON s.s_id = se.s_id
 -- ✅ Only students under this dean's department
 WHERE sd.degree_id = {$dean_degree_id}
 
-GROUP BY s.s_id
+GROUP BY
+    s.s_id,
+    sd.degree_id,
+    sd.degree_code,
+    sec_merged.section_id,
+    sec_merged.section_code,
+    sec_single.section_id,
+    sec_single.section_code,
+    p.p_lname,
+    p.p_fname,
+    p.p_mname,
+    p.p_suffix
 ORDER BY is_active_term DESC, s.s_id DESC, s.s_created_at DESC
 ";
 
