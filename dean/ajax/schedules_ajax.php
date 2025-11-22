@@ -16,6 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $teachers_query = "
     SELECT DISTINCT
         t.t_id,
+        t.t_lname,
+        t.t_fname,
         CONCAT(t.t_lname, ', ', t.t_fname, ' ', COALESCE(LEFT(t.t_mname, 1), '')) AS teacher_name,
         t.t_status,
         t.t_department,
