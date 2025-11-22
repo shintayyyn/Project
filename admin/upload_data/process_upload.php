@@ -97,7 +97,17 @@ try {
         $s_lname    = $row[$colIndex['student_last_name']] ?? '';
         $s_mname    = $row[$colIndex['student_middle_name']] ?? '';
         $s_suffix   = $row[$colIndex['student_suffix']] ?? '';
-        $s_gender   = $row[$colIndex['student_gender']] ?? '';
+
+        // Normalize gender value to match ENUM ('Male','Female','Other')
+        $s_gender_raw = strtolower(trim($row[$colIndex['student_gender']] ?? 'other'));
+        if (in_array($s_gender_raw, ['male', 'm'])) {
+            $s_gender = 'Male';
+        } elseif (in_array($s_gender_raw, ['female', 'f'])) {
+            $s_gender = 'Female';
+        } else {
+            $s_gender = 'Other';
+        }
+
         $s_bdate_raw = $row[$colIndex['student_birthdate']] ?? '';
         $s_cnum     = $row[$colIndex['student_contact_number']] ?? '';
         $s_email    = $row[$colIndex['student_email']] ?? '';
@@ -202,7 +212,7 @@ try {
         $p_lname = 'Solo';
         $p_mname = '';
         $p_suffix= '';
-        $p_gender= 'N/A';
+        $p_gender= 'Other'; // Changed from 'N/A' to match ENUM values
         $p_bdate = $s_bdate;
         $p_cnum  = $s_cnum;
         $p_email = "solo_".uniqid()."@dummy.local";
@@ -215,7 +225,17 @@ try {
         $p_lname = $row[$colIndex['p_lname']] ?? '(Unknown)';
         $p_mname = $row[$colIndex['p_mname']] ?? '';
         $p_suffix= $row[$colIndex['p_suffix']] ?? '';
-        $p_gender= $row[$colIndex['p_gender']] ?? 'N/A';
+
+        // Normalize gender value to match ENUM ('Male','Female','Other')
+        $p_gender_raw = strtolower(trim($row[$colIndex['p_gender']] ?? 'other'));
+        if (in_array($p_gender_raw, ['male', 'm'])) {
+            $p_gender = 'Male';
+        } elseif (in_array($p_gender_raw, ['female', 'f'])) {
+            $p_gender = 'Female';
+        } else {
+            $p_gender = 'Other';
+        }
+
         $p_bdate_raw = $row[$colIndex['p_bdate']] ?? $s_bdate;
         $p_cnum  = $row[$colIndex['p_cnum']] ?? $s_cnum;
         $p_email = $row[$colIndex['p_email']] ?? "parent_".uniqid()."@dummy.local";
@@ -281,9 +301,9 @@ try {
     $admin_id = $_SESSION['user_type'] ?? 0;
     $raw_json = json_encode($rows);
 
-    $stmt = $conn->prepare("INSERT INTO upload_history 
+    $stmt = $conn->prepare("INSERT INTO upload_history
         (filename, total_records, uploaded_by, raw_data, uploaded_at, status, is_deleted)
-        VALUES (?, ?, ?, ?, NOW(), 'success', 0)");
+        VALUES (?, ?, ?, ?, NOW(), 'Processed', 0)");
     $stmt->bind_param("siis", $originalName, $insertedCount, $admin_id, $raw_json);
     $stmt->execute();
     $stmt->close();

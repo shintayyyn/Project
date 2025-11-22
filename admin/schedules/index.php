@@ -54,22 +54,62 @@ while ($room = $rooms_result->fetch_assoc()) {
 }
 $rooms_json = json_encode($rooms_data);
 
-// === Fetch all subjects with teachers ===
+// === Fetch all subjects ===
 $subjects_query = "
-SELECT DISTINCT 
+SELECT DISTINCT
     s.subject_id,
     s.subject_code,
     s.subject_description,
     s.units,
-    s.degree_id,
-    t.t_id,
-    CONCAT(t.t_lname, ', ', t.t_fname, ' ', COALESCE(LEFT(t.t_mname, 1), '.')) AS teacher_name
+    s.degree_id
 FROM subjects s
-LEFT JOIN teachers t ON s.subject_id = t.t_id  -- keep your table names
 ORDER BY s.subject_code
 ";
 
 $subjects_result = $conn->query($subjects_query);
+
+// === Fetch all schedules in a single query (optimize N+1 problem) ===
+$all_schedules_query = "
+SELECT
+    ss.ss_id,
+    ss.schedule_group_id,
+    ss.term_id,
+    ss.section_id,
+    ss.subject_code,
+    s.subject_description,
+    s.units,
+    ss.teacher_id,
+    ss.day_of_week,
+    ss.start_time,
+    ss.end_time,
+    ss.room_id,
+    r.room_number,
+    r.capacity AS room_capacity,
+    CASE
+        WHEN ss.term_id = $current_term_id AND ss.teacher_id IS NOT NULL THEN
+            CONCAT(t.t_lname, ', ', t.t_fname, ' ', COALESCE(LEFT(t.t_mname,1),''), '.')
+        ELSE 'Not yet assigned'
+    END AS teacher_name
+FROM sections_schedules ss
+LEFT JOIN subjects s ON ss.subject_id = s.subject_id
+LEFT JOIN rooms r ON ss.room_id = r.room_id
+LEFT JOIN teachers t ON ss.teacher_id = t.t_id
+WHERE ss.is_active = 1
+  AND ss.subject_id IS NOT NULL
+ORDER BY ss.section_id, ss.schedule_group_id, ss.day_of_week, ss.start_time
+";
+
+$all_schedules_result = $conn->query($all_schedules_query);
+
+// Group schedules by section_id for efficient lookup
+$schedules_by_section = [];
+while ($schedule = $all_schedules_result->fetch_assoc()) {
+    $section_id = $schedule['section_id'];
+    if (!isset($schedules_by_section[$section_id])) {
+        $schedules_by_section[$section_id] = [];
+    }
+    $schedules_by_section[$section_id][] = $schedule;
+}
 ?>
 
 
@@ -370,48 +410,9 @@ overflow-x:hidden !important;
 
      <div class="row g-3" id="sectionsContainer">
  <?php foreach ($sections_by_degree as $degree_code => $degree_data) { ?>
-                <?php foreach ($degree_data['sections'] as $section) { 
-                   
-                  // Get the active term ID first
-$term_result = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1");
-$active_term = $term_result->fetch_assoc();
-$active_term_id = $active_term['term_id'] ?? 2;
-
-// Fetch schedules for this section
-$schedules_query = "
-    SELECT 
-        ss.ss_id,
-        ss.schedule_group_id,
-        ss.term_id,
-        ss.subject_code,
-        s.subject_description,
-        s.units,
-        ss.teacher_id,
-        ss.day_of_week,
-        ss.start_time,
-        ss.end_time,
-        ss.room_id,
-        r.room_number,
-        r.capacity AS room_capacity,
-        CASE 
-            WHEN ss.term_id = $active_term_id AND ss.teacher_id IS NOT NULL THEN 
-                CONCAT(t.t_lname, ', ', t.t_fname, ' ', COALESCE(LEFT(t.t_mname,1),''), '.')
-            ELSE 'Not yet assigned'
-        END AS teacher_name
-    FROM sections_schedules ss
-    LEFT JOIN subjects s ON ss.subject_id = s.subject_id
-    LEFT JOIN rooms r ON ss.room_id = r.room_id
-    LEFT JOIN teachers t ON ss.teacher_id = t.t_id
-    WHERE ss.section_id = " . (int)$section['section_id'] . "
-    AND ss.is_active = 1
-    AND ss.subject_id IS NOT NULL
-    ORDER BY ss.schedule_group_id, ss.day_of_week, ss.start_time
-";
-
-$schedules_result = $conn->query($schedules_query);
-
-
-
+                <?php foreach ($degree_data['sections'] as $section) {
+                    // Get schedules for this section from pre-fetched array
+                    $section_schedules = $schedules_by_section[$section['section_id']] ?? [];
                 ?>
                        <div class="col-12 col-lg-6 section-card" 
                  data-degree="<?= htmlspecialchars($degree_code); ?>" 
@@ -456,7 +457,7 @@ $schedules_result = $conn->query($schedules_query);
                                 </div>
                             </div>
                            <div class="card-body cbody1">
-    <?php if($schedules_result->num_rows > 0) { ?>
+    <?php if(count($section_schedules) > 0) { ?>
         <div class="table-responsive">
             <table class="table table-hover align-middle schedule-table display nowrap">
                 <thead>
@@ -470,7 +471,7 @@ $schedules_result = $conn->query($schedules_query);
                     </tr>
                 </thead>
                 <tbody>
-                    <?php 
+                    <?php
                     // Day abbreviation mapping
                     $dayMap = [
                         'Monday' => 'M',
@@ -497,7 +498,7 @@ $schedules_result = $conn->query($schedules_query);
 
                     // Collect schedules and group by identical time/teacher/room/subject
                     $groupedSchedules = [];
-                    while($schedule = $schedules_result->fetch_assoc()) {
+                    foreach($section_schedules as $schedule) {
                         $key = $schedule['subject_code'] . '|' . $schedule['start_time'] . '|' . $schedule['end_time'] . '|' . $schedule['teacher_id'] . '|' . $schedule['room_id'];
                         if (!isset($groupedSchedules[$key])) {
                             $groupedSchedules[$key] = [
@@ -1230,7 +1231,7 @@ document.querySelectorAll('.delete-schedule-btn').forEach(button => {
         const formData = new FormData();
         formData.append('action', 'get_subject_teachers');
 
-        const response = await fetch(' /admin/ajax/schedules_ajax.php', {
+        const response = await fetch('/admin/ajax/schedules_ajax.php', {
             method: 'POST',
             body: formData
         });

@@ -12,10 +12,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     switch ($action) {
  case 'get_subject_teachers':
-    // Fetch all teachers linked to any sections/advisors, regardless of term
+    // Fetch all teachers regardless of advisor status
     $teachers_query = "
     SELECT DISTINCT
         t.t_id,
+        t.t_lname,
+        t.t_fname,
+        t.t_mname,
         CONCAT(t.t_lname, ', ', t.t_fname, ' ', COALESCE(LEFT(t.t_mname, 1), '')) AS teacher_name,
         t.t_status,
         t.t_department,
@@ -23,12 +26,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         d.degree_code
     FROM teachers t
     LEFT JOIN degrees d ON t.t_department = d.degree_id
-    LEFT JOIN sections_advisors sa ON t.t_id = sa.t_id
-    LEFT JOIN sections s ON sa.section_id = s.section_id
+    WHERE t.t_status != 'inactive'
     ORDER BY t.t_lname, t.t_fname
     ";
 
     $result = $conn->query($teachers_query);
+
+    if (!$result) {
+        echo json_encode([
+            'success' => false,
+            'error' => 'Database query failed: ' . $conn->error
+        ]);
+        exit;
+    }
+
     $teachers = [];
     while ($row = $result->fetch_assoc()) {
         $teachers[] = $row;
