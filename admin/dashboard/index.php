@@ -15,44 +15,46 @@ $current_term_id = $current_term['term_id'] ?? null;
 // =======================
 // Fetch statistics
 // =======================
+
+$student_stats_sql = "
+    SELECT
+        COUNT(s.s_id) as total_students,
+        SUM(CASE WHEN s.is_regular = 1 THEN 1 ELSE 0 END) AS regular_count,
+        SUM(CASE WHEN s.is_regular = 2 THEN 1 ELSE 0 END) AS irregular_count
+    FROM (
+        SELECT DISTINCT s.s_id, s.is_regular FROM students s
+        LEFT JOIN students_sections ss ON s.s_id = ss.s_id AND ss.term_id = $current_term_id
+        LEFT JOIN subject_enrollments se ON s.s_id = se.s_id AND se.term_id = $current_term_id
+        WHERE s.is_deleted = 0 AND (ss.s_id IS NOT NULL OR se.s_id IS NOT NULL)
+    ) s
+";
+$student_stats_result = $conn->query($student_stats_sql)->fetch_assoc();
+
+
 $stats = [
- 'students' => $conn->query("
-    SELECT COUNT(DISTINCT s.s_id) AS count
-    FROM students s
-    WHERE s.is_deleted = 0
-      AND (
-            s.s_id IN (
-                SELECT DISTINCT ss.s_id
-                FROM students_sections ss
-                WHERE ss.term_id = $current_term_id
-            )
-            OR
-            s.s_id IN (
-                SELECT DISTINCT se.s_id
-                FROM subject_enrollments se
-                WHERE se.term_id = $current_term_id
-            )
-      )
-")->fetch_assoc()['count'],
-
-
+    'students' => $student_stats_result['total_students'],
     'teachers' => $conn->query("
-        SELECT COUNT(DISTINCT t.t_id) as count 
+        SELECT COUNT(DISTINCT t.t_id) as count
         FROM teachers t
     ")->fetch_assoc()['count'],
 
     'sections' => $conn->query("
-        SELECT COUNT(DISTINCT s.section_id) as count 
+        SELECT COUNT(DISTINCT s.section_id) as count
         FROM sections s
     ")->fetch_assoc()['count'],
 
     'subjects' => $conn->query("
-        SELECT COUNT(DISTINCT subj.subject_id) as count 
+        SELECT COUNT(DISTINCT subj.subject_id) as count
         FROM subjects subj
     ")->fetch_assoc()['count']
 ];
 
 $recent_activities_query = "
+    -- PERFORMANCE RECOMMENDATION:
+    -- This query is inefficient due to the large number of UNION ALL operations.
+    -- For better performance and scalability, it is highly recommended to create a dedicated 'activities' or 'audit_log' table.
+    -- This table would store a record for each significant event (e.g., 'student_created', 'teacher_updated').
+    -- The query would then become a simple 'SELECT * FROM activities ORDER BY timestamp DESC LIMIT 30', which is significantly faster.
     (SELECT 
         s.s_id AS id,
         CONCAT(s.s_fname, ' ', s.s_lname) AS name,
@@ -239,25 +241,19 @@ $section_stats = $conn->query($section_stats_query);
 // Fetch counts by term for chart
 // =======================
 $demographics_query = "
-    SELECT 
+    SELECT
         t.term_id,
         CONCAT(ay.year_start, '-', ay.year_end, ' ', t.semester) AS term_label,
-        (SELECT COUNT(DISTINCT s.s_id) 
-         FROM students_sections ss 
-         JOIN students s ON ss.s_id = s.s_id 
-         WHERE ss.term_id = t.term_id) AS students,
-        (SELECT COUNT(DISTINCT ss.teacher_id) 
-         FROM sections_schedules ss 
-         WHERE ss.term_id = t.term_id) AS teachers,
-        (SELECT COUNT(DISTINCT sec.section_id) 
-         FROM sections sec 
-         WHERE sec.term_id = t.term_id) AS sections,
-        (SELECT COUNT(DISTINCT subj.subject_id) 
-         FROM sections_schedules ss 
-         JOIN subjects subj ON ss.subject_code = subj.subject_id 
-         WHERE ss.term_id = t.term_id) AS subjects
+        COUNT(DISTINCT ss.s_id) AS students,
+        COUNT(DISTINCT ssch.teacher_id) AS teachers,
+        COUNT(DISTINCT sec.section_id) AS sections,
+        COUNT(DISTINCT ssch.subject_code) AS subjects
     FROM academic_terms t
     JOIN academic_years ay ON t.ay_id = ay.ay_id
+    LEFT JOIN students_sections ss ON t.term_id = ss.term_id
+    LEFT JOIN sections_schedules ssch ON t.term_id = ssch.term_id
+    LEFT JOIN sections sec ON t.term_id = sec.term_id
+    GROUP BY t.term_id, term_label
     ORDER BY t.term_id ASC
 ";
 
@@ -279,31 +275,8 @@ while ($row = $demographics_result->fetch_assoc()) {
 /* -----------------------------------------------
    REGULAR vs IRREGULAR (Term-Aware, matched to respective tables)
 ------------------------------------------------- */
-$type_sql = "
-    SELECT 
-        SUM(CASE WHEN s.is_regular = 1 THEN 1 ELSE 0 END) AS regular_count,
-        SUM(CASE WHEN s.is_regular = 2 THEN 1 ELSE 0 END) AS irregular_count
-    FROM students s
-    WHERE s.is_deleted = 0
-      AND (
-            s.s_id IN (
-                SELECT DISTINCT ss.s_id
-                FROM students_sections ss
-                WHERE ss.term_id = $current_term_id
-            )
-            OR
-            s.s_id IN (
-                SELECT DISTINCT se.s_id
-                FROM subject_enrollments se
-                WHERE se.term_id = $current_term_id
-            )
-      )
-";
-$type_result = $conn->query($type_sql);
-$type_data = $type_result->fetch_assoc();
-
-$regular_count = (int)$type_data['regular_count'];
-$irregular_count = (int)$type_data['irregular_count'];
+$regular_count = (int)$student_stats_result['regular_count'];
+$irregular_count = (int)$student_stats_result['irregular_count'];
 
 
 
@@ -311,16 +284,15 @@ $irregular_count = (int)$type_data['irregular_count'];
    LIVING SITUATION (Term-Aware, matched to students_sections)
 ------------------------------------------------- */
 $living_sql = "
-    SELECT 
+    SELECT
         SUM(CASE WHEN s.is_solo = 1 THEN 1 ELSE 0 END) AS with_parents_count,
         SUM(CASE WHEN s.is_solo = 2 THEN 1 ELSE 0 END) AS solo_count
-    FROM students s
-    WHERE s.is_deleted = 0
-      AND s.s_id IN (
-          SELECT DISTINCT ss.s_id
-          FROM students_sections ss
-          WHERE ss.term_id = $current_term_id
-      )
+    FROM (
+        SELECT DISTINCT s.s_id, s.is_solo
+        FROM students s
+        JOIN students_sections ss ON s.s_id = ss.s_id
+        WHERE s.is_deleted = 0 AND ss.term_id = $current_term_id
+    ) s
 ";
 $living_result = $conn->query($living_sql);
 $living_data = $living_result->fetch_assoc();
@@ -519,25 +491,6 @@ margin-left:10px;
 
             <div class="card-body" style="max-height: 400px; overflow-y: auto;">
                 <?php
-                // =======================
-                // Fetch section statistics
-                // =======================
-                $section_stats_query = "
-                    SELECT 
-                        s.section_code, 
-                        COUNT(ss.s_id) AS student_count,
-                        s.max_students,
-                        ROUND((COUNT(ss.s_id) / s.max_students) * 100) AS fill_percentage
-                    FROM sections s
-                    LEFT JOIN students_sections ss 
-                        ON s.section_id = ss.section_id 
-                        AND ss.term_id = $current_term_id
-                    GROUP BY s.section_id
-                    ORDER BY fill_percentage DESC
-                ";
-
-                $section_stats = $conn->query($section_stats_query);
-
                 if ($section_stats->num_rows === 0): ?>
                     <div class="alert alert-info text-center">No section/s available.</div>
 
@@ -822,43 +775,6 @@ const demographicsChart = new Chart(ctx, {
             y: { beginAtZero: true }
         }
     }
-});
-
-document.addEventListener("DOMContentLoaded", function () {
-    const regularCount = parseInt(document.getElementById("regularCount").textContent);
-    const irregularCount = parseInt(document.getElementById("irregularCount").textContent);
-    const withParentsCount = parseInt(document.getElementById("withParentsCount").textContent);
-    const soloCount = parseInt(document.getElementById("soloCount").textContent);
-
-    // Regular vs Irregular
-    new Chart(document.getElementById("studentTypeChart"), {
-        type: "doughnut",
-        data: {
-            labels: ["Regular", "Irregular"],
-            datasets: [{
-                data: [regularCount, irregularCount],
-                backgroundColor: ["#28a745", "#dc3545"]
-            }]
-        },
-        options: {
-            plugins: { legend: { display: false } }
-        }
-    });
-
-    // Living Situation
-    new Chart(document.getElementById("livingSituationChart"), {
-        type: "doughnut",
-        data: {
-            labels: ["With Parents/Guardians", "Solo"],
-            datasets: [{
-                data: [withParentsCount, soloCount],
-                backgroundColor: ["#007bff", "#ffc107"]
-            }]
-        },
-        options: {
-            plugins: { legend: { display: false } }
-        }
-    });
 });
 
 document.getElementById('endTermBtn').addEventListener('click', function() {
