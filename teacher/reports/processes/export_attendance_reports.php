@@ -95,7 +95,7 @@ foreach($subjects as $sheetIndex => $subj){
     $stmt = $conn->prepare("
         SELECT day_of_week, start_time, end_time 
         FROM sections_schedules 
-        WHERE section_id=? AND subject_code=? AND term_id=?
+        WHERE section_id=? AND subject_code=? AND term_id=? 
     ");
     $stmt->bind_param("isi", $subj['section_id'], $subj['subject_code'], $term_id);
     $stmt->execute();

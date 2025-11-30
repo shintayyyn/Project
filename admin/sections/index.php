@@ -22,39 +22,52 @@ $debug_assigned = "SELECT COUNT(DISTINCT s_id) AS total FROM students_sections";
 $assigned_result = $conn->query($debug_assigned);
 $total_assigned = $assigned_result ? $assigned_result->fetch_assoc()['total'] : 0;
 
-// --------------------- Unassigned Students with Active Degree ---------------------
+// Fetch active term
+$term_result = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1");
+$term_id = ($term_result && $row = $term_result->fetch_assoc()) ? $row['term_id'] : 0;
+
 $unassigned_query = "
-    SELECT 
-        s.*, 
-        sd.degree_code,
-        sd.degree_id,
-        sd.enrollment_date,
-        sd.status,
-        sd.s_gender
+    SELECT s.*, sd.degree_code, sd.degree_id, sd.enrollment_date, sd.status, sd.s_gender
     FROM students s
-    LEFT JOIN students_sections ss ON s.s_id = ss.s_id
-   LEFT JOIN (
-    SELECT sd1.s_id, sd1.degree_code, sd1.degree_id, sd1.enrollment_date, sd1.status, sd1.s_gender
-    FROM students_degrees sd1
-    WHERE sd1.status = 'Active'
-    AND sd1.enrollment_date = (
-        SELECT MAX(sd2.enrollment_date)
-        FROM students_degrees sd2
-        WHERE sd2.s_id = sd1.s_id AND sd2.status = 'Active'
-    )
-) sd ON s.s_id = sd.s_id
+
+    -- Latest active degree
+    INNER JOIN (
+        SELECT sd1.s_id, sd1.degree_code, sd1.degree_id, sd1.enrollment_date, sd1.status, sd1.s_gender
+        FROM students_degrees sd1
+        WHERE sd1.status = 'Active'
+        AND sd1.enrollment_date = (
+            SELECT MAX(sd2.enrollment_date)
+            FROM students_degrees sd2
+            WHERE sd2.s_id = sd1.s_id AND sd2.status = 'Active'
+        )
+    ) sd ON s.s_id = sd.s_id
+
+    -- Exclude students who already have a section for this term
+    LEFT JOIN students_sections ss 
+        ON s.s_id = ss.s_id 
+        AND ss.term_id = {$term_id}
+
+    -- Exclude students who already have subject enrollments for this term
+    LEFT JOIN subject_enrollments se
+        ON s.s_id = se.s_id
+        AND se.term_id = {$term_id}
 
     WHERE ss.s_id IS NULL
+      AND se.s_id IS NULL
+      AND (s.enrollment_status = 'Not yet Enrolled' 
+           OR s.enrollment_status LIKE 'Promoted%')
+           AND s.is_regular = 1
+           AND s.s_status = 'active' OR s.s_status = 'inactive' AND s.term_id = {$term_id}
+
+    -- Optional: filter by program/degree if your unassigned_counts uses it
+    -- AND sd.degree_code = 'SPECIFIC_CODE'
+
     ORDER BY s.s_lname, s.s_fname
 ";
 
 $unassigned_students = $conn->query($unassigned_query);
 
-
 // --------------------- Sections with Advisor and Student Count ---------------------
-// Fetch active term
-$term_result = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1");
-$term_id = ($term_result && $row = $term_result->fetch_assoc()) ? $row['term_id'] : 0;
 
 $sections_query = "
     SELECT 
@@ -161,8 +174,13 @@ while ($section = $all_sections_result->fetch_assoc()) {
    <!-- Tabs Navigation -->
 <ul class="nav nav-tabs mb-3" id="studentSectionTabs" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="unassigned-tab" data-bs-toggle="tab" data-bs-target="#unassignedTabContent" type="button" role="tab" aria-controls="unassignedTabContent" aria-selected="true">
-      Unassigned Students
+    <button class="nav-link active" id="unassigned-tab1" data-bs-toggle="tab" data-bs-target="#unassignedTabContent" type="button" role="tab" aria-controls="unassignedTabContent" aria-selected="true">
+      View & Assign
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="unassigned-tab2" data-bs-toggle="tab" data-bs-target="#uploadFileTabContent" type="button" role="tab" aria-controls="uploadFileTabContent" aria-selected="true">
+      Upload File
     </button>
   </li>
   <li class="nav-item" role="presentation">
@@ -174,12 +192,11 @@ while ($section = $all_sections_result->fetch_assoc()) {
 
 <!-- Tabs Content -->
 <div class="tab-content" id="studentSectionTabsContent">
-  <!-- Unassigned Students Tab
-  <div class="tab-pane fade show active" id="unassignedTabContent" role="tabpanel" aria-labelledby="unassigned-tab">
+  <div class="tab-pane fade show active" id="unassignedTabContent" role="tabpanel" aria-labelledby="unassigned-tab1">
     <div class="card mt-2" id="unassignedStudentsCard" style="max-height: 180vh; width: 100%;"> 
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="card-title mb-0">Unassigned Students</h5>
-        <span class="badge bg-info" id="displayedCountBadge">
+        <span class="badge bg-warning text-dark fw-bold" id="displayedCountBadge">
             Displayed: <?php echo $unassigned_students->num_rows; ?>
         </span>
     </div>
@@ -192,6 +209,7 @@ while ($section = $all_sections_result->fetch_assoc()) {
                         <th>Student ID</th>
                         <th>Name</th>
                         <th>Degree</th>
+                        <th>Year Level</th>
                         <th>Action</th>
                     </tr>
                 </thead>
@@ -206,13 +224,15 @@ while ($section = $all_sections_result->fetch_assoc()) {
                         <td><?php echo htmlspecialchars($student['idcode']); ?></td>
                         <td><?php echo htmlspecialchars($student['s_lname'] . ', ' . $student['s_fname'] . ' ' . ($student['s_mname'] ? substr($student['s_mname'], 0, 1) . '.' : '')); ?></td>
                         <td><?php echo htmlspecialchars($student['degree_code']); ?></td>
+                        <td><?php echo htmlspecialchars($student['year_level']); ?></td>
                         <td>
                             <button type="button" 
                                     class="btn btn-primary btn-sm" 
                                     data-bs-toggle="modal" 
                                     data-bs-target="#assignModal"
                                     data-student-id="<?php echo $student['s_id']; ?>"
-                                    data-degree-code="<?php echo $student['degree_code']; ?>">
+                                    data-degree-code="<?php echo $student['degree_code']; ?>"
+                                    data-year-level="<?php echo $student['year_level']; ?>">
                                 Assign to Section
                             </button>
                         </td>
@@ -222,15 +242,15 @@ while ($section = $all_sections_result->fetch_assoc()) {
             </table>
         </div>
         <?php } else { ?>
-            <div class="alert alert-success mx-3 my-3" id="noUnassignedMessage"> 
+            <div class="alert alert-info fst-italic mx-3 my-3" id="noUnassignedMessage"> 
                 No unassigned students found. All students have been assigned to sections.
             </div>
         <?php } ?>
     </div>
 </div>
 
-  </div> -->
-  <div class="tab-pane fade show active" id="unassignedTabContent" role="tabpanel">
+  </div>
+  <div class="tab-pane fade show" id="uploadFileTabContent" role="tabpanel" aria-labelledby="unassigned-tab2">
     <div class="card mt-2">
         <div class="card-header">
             <h5 class="mb-0">Upload Unassigned Students</h5>
@@ -495,19 +515,20 @@ foreach ($sections as $section) {
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Assign Student to Section</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
+                  </div>
                 <form id="assignStudentForm">
                     <div class="modal-body">
                         <input type="hidden" name="student_id" id="studentIdInput">
                         <div id="studentInfoDisplay"></div>
                         <div class="mb-3">
+                            <p id="noSectionMsg" class="alert alert-danger  fst-italic mt-2" style="display:none;"></p>
                             <label for="section" class="form-label">Select Section</label>
                             <select name="section_id" class="form-select" required id="sectionSelect">
                                 <option value="">Choose a section...</option>
                                 <?php foreach($all_sections as $section): ?>
                                     <option value="<?php echo $section['section_id']; ?>" 
-                                            data-degree-code="<?php echo $section['degree_code']; ?>">
+                                            data-degree-code="<?php echo $section['degree_code']; ?>"
+                                            data-year-level="<?php echo $section['year_level']; ?>">
                                         <?php echo $section['section_code']; ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -518,7 +539,7 @@ foreach ($sections as $section) {
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                          <button type="button" class="btn bg-warning text-dark" data-bs-dismiss="modal">Close</button>
                         <button type="submit" class="btn btn-primary">Assign Student</button>
                     </div>
                 </form>
@@ -1408,82 +1429,108 @@ editSectionModal.addEventListener('hidden.bs.modal', function() {
 });
 
 // Assign Modal Handler
-// const assignModal = document.getElementById('assignModal');
-// if (assignModal) {
-//     assignModal.addEventListener('show.bs.modal', function(event) {
-//         const button = event.relatedTarget;
-//         const studentId = button.getAttribute('data-student-id');
-//         const studentDegree = button.getAttribute('data-degree-code');
+const assignModal = document.getElementById('assignModal');
+if (assignModal) {
+    assignModal.addEventListener('show.bs.modal', function(event) {
+        const button = event.relatedTarget;
+        const studentId = button.getAttribute('data-student-id');
+        const studentDegree = button.getAttribute('data-degree-code');
+        const studentYearLevel = button.getAttribute('data-year-level');
 
-//         // Set the student ID in the hidden input
-//         document.getElementById('studentIdInput').value = studentId;
+        // Set the student ID in the hidden input
+        document.getElementById('studentIdInput').value = studentId;
 
-//         // Filter sections based on student's degree
-//         const sectionSelect = document.getElementById('sectionSelect');
-//         Array.from(sectionSelect.options).forEach(option => {
-//             const sectionDegree = option.getAttribute('data-degree-code');
-//             option.disabled = sectionDegree && sectionDegree !== studentDegree;
-//             option.style.display = option.disabled ? 'none' : '';
-//         });
+        const sectionSelect = document.getElementById('sectionSelect');
+        const noSectionMsg = document.getElementById('noSectionMsg');
+        const assignBtn = document.getElementById('assignBtn');
 
-//         // Reset selection
-//         sectionSelect.value = '';
-//     });
+        let matchFound = false;
 
-//     // Handle form submission
-//     const assignForm = document.getElementById('assignStudentForm');
-//     assignForm.addEventListener('submit', function(e) {
-//         e.preventDefault();
+        // Loop through options (skip placeholder option if value="")
+        Array.from(sectionSelect.options).forEach(option => {
 
-//         const formData = new FormData(this);
+            if (option.value === "") return; // ignore placeholder
 
-//         fetch('/admin/sections/processes/assign_student.php', {
-//             method: 'POST',
-//             body: formData
-//         })
-//         .then(response => response.json())
-//         .then(data => {
-//           if (data.success) {
-//     const studentId = formData.get('student_id');
-//     const sectionId = data.section_id;
+            const sectionDegree = option.getAttribute('data-degree-code');
+            const sectionYear = option.getAttribute('data-year-level');
 
-//     // 1️⃣ Remove student row from Unassigned Students table
-//     const table = $('#unassignedStudentsTable').DataTable();
-//     const row = table.rows().nodes().to$().filter(`[data-student-id="${studentId}"]`);
-//     if (row.length) {
-//         table.row(row).remove().draw(false);
+            const isMatch =
+                (sectionDegree === studentDegree) &&
+                (sectionYear === studentYearLevel);
 
-//         // Update displayed count badge
-//         const displayedBadge = $('#displayedCountBadge');
-//         let currentCount = parseInt(displayedBadge.text().replace(/\D/g,'')) || 0;
-//         displayedBadge.html(`Displayed: ${Math.max(currentCount - 1, 0)}`);
-//     }
+            option.disabled = !isMatch;
+            option.style.display = isMatch ? '' : 'none';
 
-//     // 2️⃣ Update section count badge
-//     const sectionCountBadge = $(`#section-count-${sectionId}`);
-//     const currentCountSpan = sectionCountBadge.find('.current-count');
-//     const currentCount = parseInt(currentCountSpan.text()) || 0;
-//     currentCountSpan.text(currentCount + 1);
+            if (isMatch) matchFound = true;
+        });
 
-//     // 3️⃣ Close modal & show success toast
-//     const modal = bootstrap.Modal.getInstance(assignModal);
-//     modal.hide();
-//     showAlert('success', data.message);
-// }
-//  else {
-//                 showAlert('error', data.message || 'Failed to assign student');
-//             }
-//         })
-//         .catch(error => {
-//             console.error('Error:', error);
-//             showAlert('error', 'Server error occurred');
-//         });
-//     });
-// }
-// });
+        // Reset selection
+        sectionSelect.value = "";
 
+        // Show / hide message
+        if (!matchFound) {
+            noSectionMsg.style.display = "block";
+            noSectionMsg.innerText = "No section/s available.";
+            sectionSelect.disabled = true;
+            assignBtn.disabled = true;
+        } else {
+            noSectionMsg.style.display = "none";
+            sectionSelect.disabled = false;
+            assignBtn.disabled = false;
+        }
+    });
+}
+
+    // Handle form submission
+    const assignForm = document.getElementById('assignStudentForm');
+    assignForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+
+        fetch('/admin/sections/processes/assign_student.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+    const studentId = formData.get('student_id');
+    const sectionId = data.section_id;
+
+    // 1️⃣ Remove student row from Unassigned Students table
+    const table = $('#unassignedStudentsTable').DataTable();
+    const row = table.rows().nodes().to$().filter(`[data-student-id="${studentId}"]`);
+    if (row.length) {
+        table.row(row).remove().draw(false);
+
+        // Update displayed count badge
+        const displayedBadge = $('#displayedCountBadge');
+        let currentCount = parseInt(displayedBadge.text().replace(/\D/g,'')) || 0;
+        displayedBadge.html(`Displayed: ${Math.max(currentCount - 1, 0)}`);
+    }
+
+    // 2️⃣ Update section count badge
+    const sectionCountBadge = $(`#section-count-${sectionId}`);
+    const currentCountSpan = sectionCountBadge.find('.current-count');
+    const currentCount = parseInt(currentCountSpan.text()) || 0;
+    currentCountSpan.text(currentCount + 1);
+
+    // 3️⃣ Close modal & show success toast
+    const modal = bootstrap.Modal.getInstance(assignModal);
+    modal.hide();
+    showAlert('success', data.message);
+}
+ else {
+                showAlert('error', data.message || 'Failed to assign student');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('error', 'Server error occurred');
+        });
+    });
 });
-
 
 // ================= Upload Students Form =================
 document.getElementById('uploadStudentsForm').addEventListener('submit', function (e) {

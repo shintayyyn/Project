@@ -21,40 +21,61 @@ $total_students = $debug_result ? $debug_result->fetch_assoc()['total'] : 0;
 $debug_assigned = "SELECT COUNT(DISTINCT s_id) AS total FROM students_sections";
 $assigned_result = $conn->query($debug_assigned);
 $total_assigned = $assigned_result ? $assigned_result->fetch_assoc()['total'] : 0;
+// Fetch active term
+$term_result = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1");
+$term_id = ($term_result && $row = $term_result->fetch_assoc()) ? $row['term_id'] : 0;
 
 // --------------------- Unassigned Students with Active Degree ---------------------
 $unassigned_query = "
-    SELECT 
-        s.*, 
-        sd.degree_code,
-        sd.degree_id,
-        sd.enrollment_date,
-        sd.status,
-        sd.s_gender
-    FROM students s
-    LEFT JOIN students_sections ss ON s.s_id = ss.s_id
-   LEFT JOIN (
+SELECT s.*, 
+       sd.degree_code, 
+       sd.degree_id, 
+       sd.enrollment_date, 
+       sd.status AS degree_status, 
+       sd.s_gender
+FROM students s
+
+-- Latest active degree (if any)
+LEFT JOIN (
     SELECT sd1.s_id, sd1.degree_code, sd1.degree_id, sd1.enrollment_date, sd1.status, sd1.s_gender
     FROM students_degrees sd1
     WHERE sd1.status = 'Active'
-    AND sd1.enrollment_date = (
-        SELECT MAX(sd2.enrollment_date)
-        FROM students_degrees sd2
-        WHERE sd2.s_id = sd1.s_id AND sd2.status = 'Active'
-    )
+      AND sd1.enrollment_date = (
+          SELECT MAX(sd2.enrollment_date)
+          FROM students_degrees sd2
+          WHERE sd2.s_id = sd1.s_id AND sd2.status = 'Active'
+      )
 ) sd ON s.s_id = sd.s_id
 
-    WHERE ss.s_id IS NULL
-    ORDER BY s.s_lname, s.s_fname
+-- Join degrees to filter by dean
+LEFT JOIN degrees d ON sd.degree_id = d.degree_id
+
+-- Exclude students who already have a section for this term
+LEFT JOIN students_sections ss 
+    ON s.s_id = ss.s_id 
+    AND ss.term_id = {$term_id}
+
+-- Exclude students who already have subject enrollments for this term
+LEFT JOIN subject_enrollments se
+    ON s.s_id = se.s_id
+    AND se.term_id = {$term_id}
+
+WHERE ss.s_id IS NULL               -- not assigned to any section
+  AND se.s_id IS NULL               -- not enrolled in any subjects
+  AND (s.enrollment_status = 'Not yet Enrolled' 
+       OR s.enrollment_status LIKE 'Promoted%')
+  AND s.is_regular = 1
+  AND s.s_status = 'inactive'
+  AND s.term_id = {$term_id}
+  AND (d.dean_id = {$dean_id} OR sd.degree_id IS NULL)   -- include students without degree
+
+ORDER BY s.s_lname, s.s_fname
 ";
 
 $unassigned_students = $conn->query($unassigned_query);
 
 
 // --------------------- Sections with Advisor and Student Count ---------------------
-// Fetch active term
-$term_result = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1");
-$term_id = ($term_result && $row = $term_result->fetch_assoc()) ? $row['term_id'] : 0;
 
 $sections_query = "
     SELECT 
@@ -158,11 +179,16 @@ while ($section = $all_sections_result->fetch_assoc()) {
 
     </div>
 
-   <!-- Tabs Navigation -->
+     <!-- Tabs Navigation -->
 <ul class="nav nav-tabs mb-3" id="studentSectionTabs" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="unassigned-tab" data-bs-toggle="tab" data-bs-target="#unassignedTabContent" type="button" role="tab" aria-controls="unassignedTabContent" aria-selected="true">
-      Unassigned Students
+    <button class="nav-link active" id="unassigned-tab1" data-bs-toggle="tab" data-bs-target="#unassignedTabContent" type="button" role="tab" aria-controls="unassignedTabContent" aria-selected="true">
+      View & Assign
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="unassigned-tab2" data-bs-toggle="tab" data-bs-target="#uploadFileTabContent" type="button" role="tab" aria-controls="uploadFileTabContent" aria-selected="true">
+      Upload File
     </button>
   </li>
   <li class="nav-item" role="presentation">
@@ -174,12 +200,11 @@ while ($section = $all_sections_result->fetch_assoc()) {
 
 <!-- Tabs Content -->
 <div class="tab-content" id="studentSectionTabsContent">
-  <!-- Unassigned Students Tab
-  <div class="tab-pane fade show active" id="unassignedTabContent" role="tabpanel" aria-labelledby="unassigned-tab">
+  <div class="tab-pane fade show active" id="unassignedTabContent" role="tabpanel" aria-labelledby="unassigned-tab1">
     <div class="card mt-2" id="unassignedStudentsCard" style="max-height: 180vh; width: 100%;"> 
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="card-title mb-0">Unassigned Students</h5>
-        <span class="badge bg-info" id="displayedCountBadge">
+        <span class="badge bg-warning text-dark fw-bold" id="displayedCountBadge">
             Displayed: <?php echo $unassigned_students->num_rows; ?>
         </span>
     </div>
@@ -192,36 +217,30 @@ while ($section = $all_sections_result->fetch_assoc()) {
                         <th>Student ID</th>
                         <th>Name</th>
                         <th>Degree</th>
+                        <th>Year Level</th>
                         <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php 
+                    <?php
                     $displayed_count = 0;
                     while($student = $unassigned_students->fetch_assoc()) {
                         $displayed_count++;
-                    $degrees = [];
-                        $result = $conn->query("SELECT degree_id, degree_code, degree_name FROM degrees ORDER BY degree_name ASC");
-
-                        if ($result) {
-                            while ($row = $result->fetch_assoc()) {
-                                $degrees[] = $row;
-                            }
-                        }
-
-
+                        // $degrees is already fetched at the top of the file (line 104)
                     ?>
                     <tr data-student-id="<?php echo htmlspecialchars($student['s_id']); ?>">
                         <td><?php echo htmlspecialchars($student['idcode']); ?></td>
                         <td><?php echo htmlspecialchars($student['s_lname'] . ', ' . $student['s_fname'] . ' ' . ($student['s_mname'] ? substr($student['s_mname'], 0, 1) . '.' : '')); ?></td>
                         <td><?php echo htmlspecialchars($student['degree_code']); ?></td>
+                        <td><?php echo htmlspecialchars($student['year_level']); ?></td>
                         <td>
                             <button type="button" 
                                     class="btn btn-primary btn-sm" 
                                     data-bs-toggle="modal" 
                                     data-bs-target="#assignModal"
                                     data-student-id="<?php echo $student['s_id']; ?>"
-                                    data-degree-code="<?php echo $student['degree_code']; ?>">
+                                    data-degree-code="<?php echo $student['degree_code']; ?>"
+                                    data-year-level="<?php echo $student['year_level']; ?>">
                                 Assign to Section
                             </button>
                         </td>
@@ -238,8 +257,8 @@ while ($section = $all_sections_result->fetch_assoc()) {
     </div>
 </div>
 
-  </div> -->
-  <div class="tab-pane fade show active" id="unassignedTabContent" role="tabpanel">
+  </div>
+  <div class="tab-pane fade show" id="uploadFileTabContent" role="tabpanel" aria-labelledby="unassigned-tab2">
     <div class="card mt-2">
         <div class="card-header">
             <h5 class="mb-0">Upload Unassigned Students</h5>

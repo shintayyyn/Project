@@ -1,8 +1,10 @@
 <?php
 session_start();
 require_once __DIR__ . '/../../includes/db.php';
+require_once('../../includes/mailer.php');
 header('Content-Type: application/json');
 date_default_timezone_set('Asia/Manila');
+
 
 if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'teacher') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
@@ -40,6 +42,8 @@ $termInfoStmt->close();
     echo json_encode(['success' => false, 'message' => 'No active term found.']);
     exit();
 }
+
+
 
 /* ======================================================
    CASE 1: Teacher Time-in
@@ -235,7 +239,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['subject_code'], $_POS
                 ");
                 $insertStmt->bind_param("iissssi", $s['s_id'], $subject_id, $subject_code, $section_code, $attendanceDate, $attendanceDate, $term_id);
                 $insertStmt->execute();
+                 // Fetch room number by joining rooms table
+$roomStmt = $conn->prepare("
+    SELECT r.room_number 
+    FROM sections_schedules ss
+    LEFT JOIN rooms r ON ss.room_id = r.room_id
+    WHERE ss.subject_code = ? AND ss.section_id = ? AND ss.term_id = ?
+    LIMIT 1
+");
+$roomStmt->bind_param("sii", $subject_code, $section_id, $term_id);
+$roomStmt->execute();
+$roomRes = $roomStmt->get_result();
+$roomRow = $roomRes->fetch_assoc();
+$room = $roomRow['room_number'] ?? '';
+$roomStmt->close();
+
+// Send parent email
+if ($parent_email) {
+    $timeType = $attendanceRes->num_rows > 0 ? 'Time-out' : 'Time-in';
+    $timestamp = date('M j, Y g:i A');
+
+    sendEmail(
+        $parent_email,
+        $student['s_fname'] . ' ' . $student['s_mname'] . ' ' . $student['s_lname'] . ' ' . $student['s_suffix'], // Student Name
+        $subject_code, // Subject Name
+        $section_code, // Section
+        $timeType,     // Time-in or Time-out
+        $timestamp,    // Current timestamp
+        $room          // Room number
+    );
+}
                 $insertStmt->close();
+                
             }
 
             $checkStmt->close();
@@ -359,6 +394,22 @@ if ($result->num_rows === 0) {
 }
 
 $student = $result->fetch_assoc();
+$student_id = $student['s_id'];
+// Fetch parent email
+$parentStmt = $conn->prepare("
+    SELECT p.p_email 
+    FROM parents p
+    JOIN parent_student sp ON p.p_id = sp.p_id
+    WHERE sp.s_id = ?
+    LIMIT 1
+");
+$parentStmt->bind_param("i", $student_id);
+$parentStmt->execute();
+$parentRes  = $parentStmt->get_result();
+$parentRow  = $parentRes->fetch_assoc();
+$parent_email = $parentRow['p_email'] ?? null;
+$parentStmt->close();
+
 
 // ✅ Now check QR expiration properly
 if (!empty($student['expires_at'])) {
@@ -492,6 +543,38 @@ if ($currentTime < $allowed_start) {
     ");
     $stmt->bind_param("iisssi", $student_id, $subject_id, $subject_code, $section_code, $status, $term_id);
     $stmt->execute();
+  // Fetch room number by joining rooms table
+$roomStmt = $conn->prepare("
+    SELECT r.room_number 
+    FROM sections_schedules ss
+    LEFT JOIN rooms r ON ss.room_id = r.room_id
+    WHERE ss.subject_code = ? AND ss.section_id = ? AND ss.term_id = ?
+    LIMIT 1
+");
+$roomStmt->bind_param("sii", $subject_code, $section_id, $term_id);
+$roomStmt->execute();
+$roomRes = $roomStmt->get_result();
+$roomRow = $roomRes->fetch_assoc();
+$room = $roomRow['room_number'] ?? '';
+$roomStmt->close();
+
+// Send parent email
+if ($parent_email) {
+    $timeType = $attendanceRes->num_rows > 0 ? 'Time-out' : 'Time-in';
+    $timestamp = date('M j, Y g:i A');
+
+    sendEmail(
+        $parent_email,
+        $student['s_fname'] . ' ' . $student['s_mname'] . ' ' . $student['s_lname'] . ' ' . $student['s_suffix'], // Student Name
+        $subject_code, // Subject Name
+        $section_code, // Section
+        $timeType,     // Time-in or Time-out
+        $timestamp,    // Current timestamp
+        $room          // Room number
+    );
+}
+
+
 
     echo json_encode([
     'success' => true,

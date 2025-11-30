@@ -167,6 +167,7 @@ $result = $conn->query($sql);
 .dataTables_wrapper {
     overflow: hidden;
 }
+
 </style>
 <main>
 <div class="container-fluid p-0">
@@ -309,14 +310,14 @@ if (!empty($row['s_bdate'])) {
 <div class="col-lg-4">
     <div class="card shadow-sm flex-fill" id="studentDetailsCard">
        <div class="card-header d-flex justify-content-between align-items-center">
-  <h5 class="mb-0">Personal Information</h5>
+  <h5 class="mb-0 fw-bold">Student's Info</h5>
   <div class="action-buttons d-flex gap-2">
-    <button type="button" class="btn btn-sm btn-primary btn-edit-student">
-      <i class="bi bi-pencil-square me-1"></i> Edit
+    <button type="button" class="btn btn-sm btn-primary btn-edit-student editbtn fw-bold">
+      <i class="bi bi-pencil-square me-1"></i>Edit
     </button>
-    <button type="button" class="btn btn-sm btn-danger btn-delete-student">
+    <!-- <button type="button" class="btn btn-sm btn-danger btn-delete-student">
       <i class="bi bi-trash me-1"></i> Delete
-    </button>
+    </button> -->
   </div>
 </div>
 

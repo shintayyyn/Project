@@ -54,7 +54,7 @@ LEFT JOIN students_degrees sd
 LEFT JOIN students_sections ss
        ON s.s_id = ss.s_id AND ss.term_id = ?
 WHERE s.is_regular = 1
-  AND s.s_status = 'active'
+   AND (s.s_status = 'active' OR s.s_status = 'inactive' AND s.term_id = {$term_id})
   AND (s.enrollment_status LIKE 'Promoted%' OR s.enrollment_status = 'Not yet Enrolled')
   AND (ss.section_id IS NULL OR ss.section_id = '')
 ORDER BY sd.degree_code ASC, s.s_lname ASC

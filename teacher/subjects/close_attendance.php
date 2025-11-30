@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/db.php';
+require_once '../../includes/mailer.php';
+header('Content-Type: application/json');
 session_start();
 
 $subject_code = $_POST['subject_code'] ?? null;
@@ -15,7 +17,8 @@ if (!$subject_code || !$section_id || !$timestamp) {
 $currentDay  = strtolower(date('l'));
 $currentDate = date('Y-m-d');
 
-// ✅ Get active term_id
+// ------------------------
+// Get active term_id
 $term_result = $conn->query("SELECT term_id FROM academic_terms WHERE is_active = 1 LIMIT 1");
 if (!$term_result || $term_result->num_rows === 0) {
     echo json_encode(['success' => false, 'message' => 'No active term found']);
@@ -37,9 +40,25 @@ $section_code = $secRes->fetch_assoc()['section_code'];
 $secStmt->close();
 
 // ------------------------
-// Check if schedule exists for this subject/section today (with term_id)
+// Get room number for this subject/section
+$roomStmt = $conn->prepare("
+    SELECT r.room_number
+    FROM sections_schedules ss
+    LEFT JOIN rooms r ON ss.room_id = r.room_id
+    WHERE ss.subject_code = ? AND ss.section_id = ? AND ss.term_id = ?
+    LIMIT 1
+");
+$roomStmt->bind_param("sii", $subject_code, $section_id, $term_id);
+$roomStmt->execute();
+$roomRes = $roomStmt->get_result();
+$roomRow = $roomRes->fetch_assoc();
+$room_number = $roomRow['room_number'] ?? '';
+$roomStmt->close();
+
+// ------------------------
+// Check if schedule exists for this subject/section today
 $schedStmt = $conn->prepare("
-    SELECT teacher_id, start_time, end_time
+    SELECT teacher_id
     FROM sections_schedules
     WHERE subject_code = ? 
       AND section_id = ? 
@@ -58,11 +77,11 @@ if ($schedResult->num_rows === 0) {
     exit;
 }
 
-$schedule    = $schedResult->fetch_assoc();
-$teacher_id  = $schedule['teacher_id'];
+$schedule   = $schedResult->fetch_assoc();
+$teacher_id = $schedule['teacher_id'];
 
 // ------------------------
-// ✅ Trap: Check if already dismissed by teacher
+// Check if already dismissed by teacher
 $checkDismiss = $conn->prepare("
     SELECT dismissed 
     FROM teacher_attendance
@@ -82,9 +101,8 @@ $checkDismiss->close();
 $conn->begin_transaction();
 
 try {
-    // ------------------------
-    // 1️⃣ Update students who already have time_in
     if ($only_time_in) {
+        // Update time_out for students who already have time_in
         $stmt = $conn->prepare("
             UPDATE attendance
             SET time_out = ?
@@ -93,53 +111,86 @@ try {
         $stmt->bind_param("ssssi", $timestamp, $subject_code, $section_code, $currentDate, $term_id);
         $stmt->execute();
         $stmt->close();
-    } else {
-        // ------------------------
-        // 2️⃣ Insert Absent only if NOT dismissed
+    } 
+
+    // Fetch students for this section and term
+    $studentsStmt = $conn->prepare("
+        SELECT s.s_id, s.s_fname, s.s_mname, s.s_lname, s.s_suffix, ps.p_id, p.p_email
+        FROM students s
+        JOIN students_sections ss ON s.s_id = ss.s_id
+        LEFT JOIN parent_student ps ON s.s_id = ps.s_id
+        LEFT JOIN parents p ON ps.p_id = p.p_id
+        WHERE ss.section_id = ? AND ss.term_id = ?
+    ");
+    $studentsStmt->bind_param("ii", $section_id, $term_id);
+    $studentsStmt->execute();
+    $studentsRes = $studentsStmt->get_result();
+
+    $emailsToSend = [];
+    
+    while ($s = $studentsRes->fetch_assoc()) {
+        // Only insert/update attendance if class not dismissed
         if ($dismissed == 0) {
-            $studentsStmt = $conn->prepare("
-                SELECT s.s_id
-                FROM students s
-                JOIN students_sections ss ON s.s_id = ss.s_id
-                WHERE ss.section_id = ? AND ss.term_id = ?
+            $checkStmt = $conn->prepare("
+                SELECT 1 FROM attendance
+                WHERE s_id = ? AND subject_code = ? AND section_code = ? AND DATE(time_in) = ? AND term_id = ?
             ");
-            $studentsStmt->bind_param("ii", $section_id, $term_id);
-            $studentsStmt->execute();
-            $studentsRes = $studentsStmt->get_result();
+            $checkStmt->bind_param("isssi", $s['s_id'], $subject_code, $section_code, $currentDate, $term_id);
+            $checkStmt->execute();
+            $checkStmt->store_result();
 
-            while ($s = $studentsRes->fetch_assoc()) {
-                // Check if student already has a record today
-                $checkStmt = $conn->prepare("
-                    SELECT 1 FROM attendance
-                    WHERE s_id = ? AND subject_code = ? AND section_code = ? AND DATE(time_in) = ? AND term_id = ?
+            if ($checkStmt->num_rows === 0) {
+                $insertStmt = $conn->prepare("
+                    INSERT INTO attendance (s_id, subject_code, section_code, term_id, time_in, time_out, status, room)
+                    VALUES (?, ?, ?, ?, ?, NULL, 'Present', ?)
                 ");
-                $checkStmt->bind_param("isssi", $s['s_id'], $subject_code, $section_code, $currentDate, $term_id);
-                $checkStmt->execute();
-                $checkStmt->store_result();
-
-                if ($checkStmt->num_rows === 0) {
-                    $insertStmt = $conn->prepare("
-                        INSERT INTO attendance (s_id, subject_code, section_code, term_id, time_in, time_out, status)
-                        VALUES (?, ?, ?, ?, NULL, NULL, 'Absent')
-                    ");
-                    $insertStmt->bind_param("issi", $s['s_id'], $subject_code, $section_code, $term_id);
-                    $insertStmt->execute();
-                    $insertStmt->close();
-                }
-                $checkStmt->close();
+                $insertStmt->bind_param("ississ", $s['s_id'], $subject_code, $section_code, $term_id, $timestamp, $room_number);
+                $insertStmt->execute();
+                $insertStmt->close();
             }
-            $studentsStmt->close();
-        } else {
-            $conn->commit();
-            echo json_encode(['success' => false,'dismissed' => 1, 'message' => 'Class already dismissed. No new records inserted.']);
-            exit;
+            $checkStmt->close();
+        }
+
+        // Prepare emails to send AFTER responding
+        if (!empty($s['p_email'])) {
+            $emailsToSend[] = [
+                'email' => $s['p_email'],
+                'name'  => trim($s['s_fname'].' '.$s['s_mname'].' '.$s['s_lname'].' '.$s['s_suffix']),
+                'subject_code' => $subject_code,
+                'section_code' => $section_code,
+                'time_type'    => 'Time-Out',
+                'timestamp'    => $timestamp,
+                'room'         => $room_number
+            ];
         }
     }
-
+    $studentsStmt->close();
     $conn->commit();
-    echo json_encode(['success' => true, 'dismissed' => 1, 'message' => 'Attendance closed successfully']);
+
+    // ------------------------
+    // Send JSON response first
+    $message = $dismissed
+        ? 'Class already dismissed. Parent emails will be sent.'
+        : 'Attendance closed successfully. Parent emails will be sent.';
+    echo json_encode(['success' => true, 'dismissed' => $dismissed, 'message' => $message]);
+
+    // ------------------------
+    // Then send emails asynchronously
+    foreach ($emailsToSend as $emailData) {
+        sendEmail(
+            $emailData['email'],
+            $emailData['name'],
+            $emailData['subject_code'],
+            $emailData['section_code'],
+            $emailData['time_type'],
+            $emailData['timestamp'],
+            $emailData['room']
+        );
+    }
+
 } catch (Exception $e) {
     $conn->rollback();
     echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
 }
+$conn->close();
 ?>

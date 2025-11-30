@@ -79,11 +79,12 @@ LEFT JOIN students_degrees sd
        ON s.s_id = sd.s_id
 LEFT JOIN students_sections ss
        ON s.s_id = ss.s_id AND ss.term_id = ?
-WHERE s.s_status = 'inactive'
-  AND s.is_regular = 1
-  AND (s.enrollment_status = 'Not yet Enrolled' OR s.enrollment_status LIKE 'Promoted%')
-  AND sd.degree_code = ?
+WHERE s.is_regular = 1
+   AND (s.s_status = 'active' OR s.s_status = 'inactive' AND s.term_id = {$term_id})
+  AND (s.enrollment_status LIKE 'Promoted%' OR s.enrollment_status = 'Not yet Enrolled')
   AND (ss.section_id IS NULL OR ss.section_id = '')
+    AND sd.degree_code = ?
+ 
 ORDER BY sd.degree_code ASC, s.s_lname ASC
 ");
 

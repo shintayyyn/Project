@@ -600,6 +600,13 @@ switch ($page) {
     scrollbar-width: thin;
     scrollbar-color: rgba(108, 117, 125, 0.5) rgba(255, 255, 255, 0.4);
 }
+.editbtn{
+   background: var(--tertiary) !important;
+   color:#033A70;
+   }
+.editbtn:hover{
+   color:#033A70;
+}
     </style>
 </head>
 <body>

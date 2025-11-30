@@ -352,15 +352,11 @@ $result = $conn->query($sql);
 
     header.append(`
       <div class="action-buttons d-flex gap-2">
-        <button class="btn btn-sm btn-primary btn-edit-teacher" 
+        <button class="btn btn-sm btn-primary btn-edit-teacher editbtn fw-bold" 
                 data-bs-toggle="modal" 
                 data-bs-target="#editTeacherModal" 
                 data-teacher-id="${teacherId}">
           <i class="bi bi-pencil-square me-1"></i>Edit
-        </button>
-        <button class="btn btn-sm btn-danger btn-delete-teacher" 
-                data-teacher-id="${teacherId}">
-          <i class="bi bi-trash me-1"></i>Delete
         </button>
       </div>
     `);

@@ -20,7 +20,7 @@ $stmt = $conn->prepare("
           AND ss.term_id = ?
     WHERE ss.section_id IS NULL
       AND s.is_regular = 1
-      AND s.s_status = 'active'
+     AND (s.s_status = 'active' OR s.s_status = 'inactive' AND s.term_id = {$term_id})
       AND (
             s.enrollment_status LIKE 'Promoted%' 
             OR s.enrollment_status = 'Not yet Enrolled'

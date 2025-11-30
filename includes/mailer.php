@@ -6,6 +6,8 @@ require_once __DIR__ . '/PHPMailer/src/Exception.php';
 require_once __DIR__ . '/PHPMailer/src/PHPMailer.php';
 require_once __DIR__ . '/PHPMailer/src/SMTP.php';
 
+
+
 function sendMail($to, $subject, $body, $attachments = null, $attachmentNames = '', $isString = false) {
     $mail = new PHPMailer(true);
 
@@ -109,4 +111,55 @@ function sendMail($to, $subject, $body, $attachments = null, $attachmentNames = 
         ];
     }
 }
+
+
+function sendEmail($toEmail, $studentName, $subjectName, $section, $timeType, $timestamp, $room = '') {
+    if (empty($toEmail)) return; // Exit if no recipient email
+
+    $mail = new PHPMailer(true);
+
+    try {
+        // SMTP configuration
+        $mail->isSMTP();
+        $mail->Host       = 'smtp.gmail.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = 'attendifysys2025@gmail.com';
+        $mail->Password   = 'lyhmcgprzmvnojwz';
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+        $mail->Port       = 465;
+
+        // Sender and recipient
+        $mail->setFrom('attendifysys2025@gmail.com', 'Attendify');
+        $mail->addAddress($toEmail);
+
+        // Email format
+        $mail->isHTML(true);
+        $mail->Subject = "Attendance Update for $studentName";
+
+        // Determine message based on timeType
+        $actionText = ($timeType === 'Time-in') 
+            ? 'successfully logged in attendance'
+            : 'successfully logged out attendance';
+
+        $mail->Body = "
+            <p>Dear Parent/Guardian of <strong>{$studentName}</strong>,</p>
+            <p>Your child has <strong>{$actionText}</strong>.</p>
+            <br>
+            <p><strong>Additional Details:</strong></p>
+            <p>Subject: {$subjectName}<br>
+               Section: {$section}<br>
+               Room: {$room}<br>
+               Time: {$timestamp}</p>
+            <br>
+            <p>Thank you.</p>
+        ";
+
+        $mail->send();
+
+    } catch (Exception $e) {
+        error_log("Email could not be sent to $toEmail. Mailer Error: {$mail->ErrorInfo}");
+    }
+}
+
+
 ?>

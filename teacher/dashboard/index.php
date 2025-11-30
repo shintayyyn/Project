@@ -670,7 +670,7 @@ main {
                 <div class="card-body border-bottom">
                     <div class="row">
                         <!-- Time -->
-                        <div class="col-3 mb-2">
+                        <div class="col mb-2">
                             <div class="schedule-time">
                                 <i class="bi bi-clock me-2"></i>
                                 <?= !empty($schedule['start_time']) ? date('h:i A', strtotime($schedule['start_time'])) : '' ?>
@@ -680,13 +680,13 @@ main {
                         </div>
 
                         <!-- Subject -->
-                        <div class="col-3 mb-2 schedule-subject">
+                        <div class="col mb-2 schedule-subject">
                             <h6 class="mb-0"><?= htmlspecialchars($schedule['subject_code'] ?? '') ?></h6>
                             <small class="text-muted"><?= htmlspecialchars($schedule['subject_description'] ?? '') ?></small>
                         </div>
 
                         <!-- Room -->
-                        <div class="col-3 mb-2 schedule-room">
+                        <div class="col mb-2 schedule-room">
                             <span class="badge text-dark px-3 py-2">
                                 <i class="bi bi-building me-1"></i>
                                 <?= htmlspecialchars($schedule['room'] ?? 'TBA') ?>
@@ -694,7 +694,7 @@ main {
                         </div>
 
                         <!-- Status + Description -->
-                        <div class="col-3 mb-2 schedule-status">
+                        <div class="col mb-2 schedule-status">
                             <?php if ($status !== ''): ?>
                                 <span class="badge <?= $badge_class ?> mb-1">
                                     <?= htmlspecialchars(ucfirst($status)) ?>

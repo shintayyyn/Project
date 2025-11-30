@@ -336,12 +336,12 @@ if (!empty($row['s_bdate'])) {
                 </div>
 
                  <div class="action-buttons mb-2 text-center">
-                    <button type="button" class="btn btn-sm btn-primary btn-edit-student">
+                    <button type="button" class="btn btn-sm btn-primary editbtn btn-edit-student fw-bold">
                     <i class="bi bi-pencil-square me-1"></i> Edit
                     </button>
-                    <button type="button" class="btn btn-sm btn-danger btn-delete-student">
+                    <!-- <button type="button" class="btn btn-sm btn-danger btn-delete-student">
                     <i class="bi bi-trash me-1"></i> Delete
-                    </button>
+                    </button> -->
                 </div>
 
                 <!-- Student Info -->
